@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Search, Filter, X, RotateCcw, Plus, AlertCircle } from 'lucide-react'
-import { getMovimientos, getProductos, getProductosListaSimple, getUsuarios, createMovimientoEntrada, createMovimientoSalida } from '../services/api'
+import { getMovimientos, getProductosListaSimple, getUsuarios, createMovimientoEntrada, createMovimientoSalida } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 import Pagination from '../components/Pagination'
-import ProductSearch from '../components/ProductSearch'
 import ProductSearch from '../components/ProductSearch'
 
 export default function Movimientos() {
