@@ -130,7 +130,7 @@ export default function ProductSearch({ value, onChange, productos = [], disable
                       </div>
                       <div className="ml-4 flex-shrink-0 text-right">
                         <p className="text-sm font-semibold text-carpinteria-oscuro">
-                          ${parseFloat(producto.precio_venta || 0).toFixed(2)}
+                          Q{parseFloat(producto.precio_venta || 0).toFixed(2)}
                         </p>
                         <p className={`text-xs mt-1 ${
                           producto.cantidad_stock <= producto.stock_minimo 
