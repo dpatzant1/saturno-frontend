@@ -101,6 +101,16 @@ export const getProductos = async (params = {}) => {
   }
 }
 
+// Nueva función para obtener lista simple de productos (sin paginación)
+export const getProductosListaSimple = async () => {
+  try {
+    const response = await api.get('/productos/lista-simple')
+    return extraerDatos(response)
+  } catch (error) {
+    throw new Error(error.response?.data?.mensaje || error.response?.data?.message || 'Error al obtener lista de productos')
+  }
+}
+
 export const getProducto = async (id) => {
   try {
     const response = await api.get(`/productos/${id}`)

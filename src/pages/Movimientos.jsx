@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Search, Filter, X, RotateCcw, Plus, AlertCircle } from 'lucide-react'
-import { getMovimientos, getProductos, getUsuarios, createMovimientoEntrada, createMovimientoSalida } from '../services/api'
+import { getMovimientos, getProductos, getProductosListaSimple, getUsuarios, createMovimientoEntrada, createMovimientoSalida } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 import Pagination from '../components/Pagination'
+import ProductSearch from '../components/ProductSearch'
+import ProductSearch from '../components/ProductSearch'
 
 export default function Movimientos() {
   // Auth store para verificar rol
@@ -75,13 +77,15 @@ export default function Movimientos() {
     }
   }, [isAdmin])
 
-  // Cargar productos para el dropdown
+  // Cargar productos para el buscador (todos los productos sin paginación)
   const cargarProductos = async () => {
     try {
-      const response = await getProductos()
-      setProductos(response.datos || response || [])
+      const response = await getProductosListaSimple()
+      // getProductosListaSimple retorna directamente el array de productos
+      setProductos(Array.isArray(response) ? response : (response.datos || []))
     } catch (error) {
       console.error('Error al cargar productos:', error)
+      setProductos([])
     }
   }
 
@@ -223,6 +227,12 @@ export default function Movimientos() {
       const producto = productos.find(p => p.id_producto === value)
       setProductoSeleccionado(producto || null)
     }
+  }
+  
+  // Manejar selección de producto desde el buscador
+  const handleProductoSeleccionado = (idProducto, producto) => {
+    setFormData(prev => ({ ...prev, id_producto: idProducto }))
+    setProductoSeleccionado(producto)
   }
 
   // Función para limpiar el formulario
@@ -378,23 +388,16 @@ export default function Movimientos() {
               </select>
             </div>
 
-            {/* Filtro por Producto */}
+            {/* Filtro por Producto con Buscador */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Producto
               </label>
-              <select
+              <ProductSearch
                 value={filtros.id_producto}
-                onChange={(e) => setFiltros({ ...filtros, id_producto: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
-              >
-                <option value="">Todos los productos</option>
-                {productos.map((producto) => (
-                  <option key={producto.id_producto} value={producto.id_producto}>
-                    {producto.nombre}
-                  </option>
-                ))}
-              </select>
+                onChange={(idProducto) => setFiltros({ ...filtros, id_producto: idProducto })}
+                productos={productos}
+              />
             </div>
 
             {/* Filtro por Usuario - Solo para administradores */}
@@ -537,24 +540,22 @@ export default function Movimientos() {
                 </div>
               </div>
 
-              {/* Selección de Producto */}
+              {/* Selección de Producto con Buscador */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Producto *
                 </label>
-                <select
+                <ProductSearch
                   value={formData.id_producto}
-                  onChange={(e) => handleFormChange('id_producto', e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
-                  required
-                >
-                  <option value="">Selecciona un producto</option>
-                  {productos.map((producto) => (
-                    <option key={producto.id_producto} value={producto.id_producto}>
-                      {producto.nombre} - {producto.categorias?.nombre}
-                    </option>
-                  ))}
-                </select>
+                  onChange={handleProductoSeleccionado}
+                  productos={productos}
+                  disabled={submitting}
+                />
+                {!formData.id_producto && (
+                  <p className="mt-1 text-xs text-gray-500">
+                    Busca y selecciona un producto
+                  </p>
+                )}
               </div>
 
               {/* Mostrar Stock Actual */}
