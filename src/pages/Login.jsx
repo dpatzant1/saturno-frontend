@@ -75,7 +75,7 @@ export default function Login() {
                 type="text"
                 autoComplete="username"
                 required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-400 text-white bg-gray-800 rounded-t-md focus:outline-none focus:ring-carpinteria-medio focus:border-carpinteria-medio focus:z-10 sm:text-sm"
+                className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 bg-white dark:text-white dark:bg-gray-800 dark:border-gray-600 dark:placeholder-gray-400 rounded-t-md focus:outline-none focus:ring-carpinteria-medio focus:border-carpinteria-medio focus:z-10 sm:text-sm"
                 placeholder="Admin"
                 value={nombre}
                 onChange={(e) => setNombre(e.target.value)}
@@ -91,7 +91,7 @@ export default function Login() {
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 required
-                className="appearance-none rounded-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-400 text-white bg-gray-800 rounded-b-md focus:outline-none focus:ring-carpinteria-medio focus:border-carpinteria-medio focus:z-10 sm:text-sm"
+                className="appearance-none rounded-none relative block w-full px-3 py-2 pr-10 border border-gray-300 placeholder-gray-500 text-gray-900 bg-white dark:text-white dark:bg-gray-800 dark:border-gray-600 dark:placeholder-gray-400 rounded-b-md focus:outline-none focus:ring-carpinteria-medio focus:border-carpinteria-medio focus:z-10 sm:text-sm"
                 placeholder="Contraseña"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -99,7 +99,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white focus:outline-none"
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white focus:outline-none"
               >
                 {showPassword ? (
                   <EyeOff className="h-5 w-5" />
