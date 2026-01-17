@@ -761,30 +761,39 @@ export const getVentasDelMes = async () => {
   }
 }
 
-// Función simple para productos más vendidos
+// Función para obtener productos más vendidos desde el backend
 export const getProductosMasVendidos = async (limite = 5, dias = 30) => {
   try {
-    console.log('🔍 Obteniendo productos más vendidos...')
+    console.log('🔍 Obteniendo productos más vendidos desde el backend...')
     
-    // Datos simulados basados en las ventas reales que viste
-    const productosVendidos = [
-      { nombre: 'Tuerca 1/2 pulgada', total_vendido: 8 },
-      { nombre: 'Tornillo 1 pulg', total_vendido: 6 },
-      { nombre: 'Pintura Blanca Galon', total_vendido: 5 },
-      { nombre: 'Ipermiabilizante', total_vendido: 3 }
-    ]
+    // Calcular rango de fechas
+    const fecha_hasta = new Date().toISOString().split('T')[0]
+    const fecha_desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     
-    console.log('📊 Productos más vendidos:', productosVendidos)
-    return productosVendidos
+    const response = await api.get('/ventas/productos/mas-vendidos', {
+      params: {
+        fecha_desde,
+        fecha_hasta,
+        limite
+      }
+    })
+    
+    const productos = extraerDatos(response)
+    
+    // Transformar formato del backend al esperado por el frontend
+    const productosFormateados = (productos || []).map(p => ({
+      nombre: p.nombre,
+      total_vendido: p.cantidad_total || 0,
+      monto_total: p.monto_total || 0,
+      numero_ventas: p.numero_ventas || 0
+    }))
+    
+    console.log('📊 Productos más vendidos:', productosFormateados)
+    return productosFormateados
     
   } catch (error) {
     console.error('❌ Error en getProductosMasVendidos:', error)
-    return [
-      { nombre: 'Tuerca 1/2 pulgada', total_vendido: 8 },
-      { nombre: 'Tornillo 1 pulg', total_vendido: 6 },
-      { nombre: 'Pintura Blanca Galon', total_vendido: 5 },
-      { nombre: 'Ipermiabilizante', total_vendido: 3 }
-    ]
+    return []
   }
 }
 
