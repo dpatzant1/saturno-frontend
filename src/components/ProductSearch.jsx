@@ -3,7 +3,8 @@ import { Search, X, Package } from 'lucide-react'
 
 /**
  * Componente de búsqueda de productos con autocompletado
- * Permite buscar productos por nombre con sugerencias en tiempo real
+ * Permite buscar productos por nombre, descripción, categoría o unidad de medida
+ * Muestra sugerencias en tiempo real
  */
 export default function ProductSearch({ value, onChange, productos = [], disabled = false }) {
   const [isOpen, setIsOpen] = useState(false)
@@ -28,9 +29,22 @@ export default function ProductSearch({ value, onChange, productos = [], disable
     if (!searchTerm.trim()) {
       setFilteredProducts(productos.slice(0, 10)) // Mostrar primeros 10 si no hay búsqueda
     } else {
-      const filtered = productos.filter(producto =>
-        producto.nombre.toLowerCase().includes(searchTerm.toLowerCase())
-      )
+      const searchLower = searchTerm.toLowerCase()
+      const filtered = productos.filter(producto => {
+        // Buscar en nombre
+        if (producto.nombre?.toLowerCase().includes(searchLower)) return true
+        
+        // Buscar en descripción
+        if (producto.descripcion?.toLowerCase().includes(searchLower)) return true
+        
+        // Buscar en nombre de categoría
+        if (producto.categorias?.nombre?.toLowerCase().includes(searchLower)) return true
+        
+        // Buscar en unidad de medida
+        if (producto.unidad_medida?.toLowerCase().includes(searchLower)) return true
+        
+        return false
+      })
       setFilteredProducts(filtered.slice(0, 20)) // Máximo 20 resultados
     }
   }, [searchTerm, productos])
@@ -84,7 +98,7 @@ export default function ProductSearch({ value, onChange, productos = [], disable
           onFocus={() => setIsOpen(true)}
           disabled={disabled}
           className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio disabled:bg-gray-100 disabled:cursor-not-allowed"
-          placeholder="Buscar producto por nombre..."
+          placeholder="Buscar por nombre, descripción, categoría..."
           autoComplete="off"
         />
         {searchTerm && !disabled && (
