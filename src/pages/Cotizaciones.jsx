@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, FileText, Search, X } from 'lucide-react'
-import { getClientes, getProductos } from '../services/api'
+import { getClientes, getProductos, getProductosListaSimple } from '../services/api'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
@@ -36,15 +36,25 @@ export default function Cotizaciones() {
     }
   }, [searchCliente, clientes])
 
-  // Filtrar productos cuando cambia la búsqueda
+  // Filtrar productos cuando cambia la búsqueda (nombre, descripción, categoría, unidad de medida)
   useEffect(() => {
     if (searchProducto.trim() === '') {
       setProductosFiltrados([])
     } else {
-      const filtered = productos.filter(p =>
-        p.nombre?.toLowerCase().includes(searchProducto.toLowerCase()) ||
-        p.codigo?.toLowerCase().includes(searchProducto.toLowerCase())
-      )
+      const searchLower = searchProducto.toLowerCase()
+      const filtered = productos.filter(p => {
+        // Buscar en nombre
+        if (p.nombre?.toLowerCase().includes(searchLower)) return true
+        // Buscar en descripción
+        if (p.descripcion?.toLowerCase().includes(searchLower)) return true
+        // Buscar en categoría
+        if (p.categorias?.nombre?.toLowerCase().includes(searchLower)) return true
+        // Buscar en unidad de medida
+        if (p.unidad_medida?.toLowerCase().includes(searchLower)) return true
+        // Buscar en código (si existe)
+        if (p.codigo?.toLowerCase().includes(searchLower)) return true
+        return false
+      })
       setProductosFiltrados(filtered)
     }
   }, [searchProducto, productos])
@@ -54,10 +64,11 @@ export default function Cotizaciones() {
       setLoading(true)
       const [clientesResponse, productosResponse] = await Promise.all([
         getClientes(),
-        getProductos()
+        getProductosListaSimple()
       ])
       setClientes(clientesResponse.datos || clientesResponse || [])
-      setProductos(productosResponse.datos || productosResponse || [])
+      // getProductosListaSimple retorna directamente el array
+      setProductos(Array.isArray(productosResponse) ? productosResponse : (productosResponse.datos || productosResponse || []))
     } catch (err) {
       console.error('Error al cargar datos:', err)
       setError(err.message)

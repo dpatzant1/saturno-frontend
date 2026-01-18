@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, Search, Eye, X, Trash2, FileText } from 'lucide-react'
-import { getVentas, getClientes, getProductos, createVentaContado, createVentaCredito, getVentaDetalle, anularVenta } from '../services/api'
+import { getVentas, getClientes, getProductos, getProductosListaSimple, createVentaContado, createVentaCredito, getVentaDetalle, anularVenta } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -105,15 +105,25 @@ export default function Ventas() {
     }
   }, [searchCliente, clientes])
 
-  // Filtrar productos por búsqueda
+  // Filtrar productos por búsqueda (nombre, descripción, categoría, unidad de medida)
   useEffect(() => {
     if (searchProducto.trim() === '') {
       setProductosFiltrados([])
     } else {
-      const filtered = productos.filter(producto =>
-        producto.nombre?.toLowerCase().includes(searchProducto.toLowerCase()) ||
-        producto.codigo?.toLowerCase().includes(searchProducto.toLowerCase())
-      )
+      const searchLower = searchProducto.toLowerCase()
+      const filtered = productos.filter(producto => {
+        // Buscar en nombre
+        if (producto.nombre?.toLowerCase().includes(searchLower)) return true
+        // Buscar en descripción
+        if (producto.descripcion?.toLowerCase().includes(searchLower)) return true
+        // Buscar en categoría
+        if (producto.categorias?.nombre?.toLowerCase().includes(searchLower)) return true
+        // Buscar en unidad de medida
+        if (producto.unidad_medida?.toLowerCase().includes(searchLower)) return true
+        // Buscar en código (si existe)
+        if (producto.codigo?.toLowerCase().includes(searchLower)) return true
+        return false
+      })
       setProductosFiltrados(filtered)
     }
   }, [searchProducto, productos])
@@ -131,11 +141,12 @@ export default function Ventas() {
     }
   }
 
-  // Función para cargar productos
+  // Función para cargar productos (todos sin paginación)
   const cargarProductos = async () => {
     try {
-      const response = await getProductos()
-      setProductos(response.datos || response || [])
+      const response = await getProductosListaSimple()
+      // getProductosListaSimple retorna directamente el array
+      setProductos(Array.isArray(response) ? response : (response.datos || response || []))
     } catch (error) {
       console.error('Error al cargar productos:', error)
       alert('Error al cargar los productos.')
