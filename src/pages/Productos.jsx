@@ -3,6 +3,7 @@ import { Plus, Edit, Trash2, Search, X, RotateCcw, Archive, AlertCircle } from '
 import { getProductos, createProducto, updateProducto, deleteProducto, getCategorias, getProductosPapelera, restaurarProducto, eliminarProductoPermanentemente } from '../services/api'
 import { useAuthStore } from '../store/authStore'
 import Pagination from '../components/Pagination'
+import CategorySearch from '../components/CategorySearch'
 
 export default function Productos() {
   // Auth store para verificar rol
@@ -69,7 +70,7 @@ export default function Productos() {
             limit: pageSize,
             busqueda: searchTerm || undefined
           }),
-          getCategorias()
+          getCategorias({ limit: 1000 }) // Obtener todas las categorías sin límite
         ])
         
         setProductos(productosRes.datos || productosRes || [])
@@ -84,7 +85,7 @@ export default function Productos() {
       
       // Cargar categorías si aún no se han cargado
       if (categorias.length === 0) {
-        const categoriasRes = await getCategorias()
+        const categoriasRes = await getCategorias({ limit: 1000 }) // Obtener todas las categorías
         setCategorias(categoriasRes.datos || categoriasRes || [])
       }
     } catch (err) {
@@ -524,20 +525,14 @@ export default function Productos() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Categoría *
                 </label>
-                <select
-                  name="id_categoria"
+                <CategorySearch
                   value={formData.id_categoria}
-                  onChange={handleInputChange}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
-                >
-                  <option value="">Seleccionar categoría</option>
-                  {categorias.map(cat => (
-                    <option key={cat.id_categoria} value={cat.id_categoria}>
-                      {cat.nombre}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(id) => {
+                    setFormData(prev => ({ ...prev, id_categoria: id }))
+                  }}
+                  categorias={categorias}
+                  disabled={false}
+                />
                 {categorias.length === 0 && (
                   <p className="text-xs text-red-500 mt-1">
                     No hay categorías disponibles. Por favor, crea una categoría primero.

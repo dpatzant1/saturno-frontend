@@ -63,7 +63,7 @@ export default function Cotizaciones() {
     try {
       setLoading(true)
       const [clientesResponse, productosResponse] = await Promise.all([
-        getClientes(),
+        getClientes({ limit: 1000 }), // Obtener todos los clientes sin límite
         getProductosListaSimple()
       ])
       setClientes(clientesResponse.datos || clientesResponse || [])
@@ -356,7 +356,7 @@ export default function Cotizaciones() {
                       >
                         <p className="font-medium text-gray-900">{producto.nombre}</p>
                         <p className="text-sm text-gray-600">
-                          Precio: Q{parseFloat(producto.precio_venta).toFixed(2)} | Stock: {producto.stock}
+                          Precio: Q{parseFloat(producto.precio_venta || 0).toFixed(2)} | Stock: {producto.cantidad_stock || 0} {producto.unidad_medida || 'unidad'}
                         </p>
                       </button>
                     ))}

@@ -150,7 +150,8 @@ export default function Creditos() {
     const badges = {
       PAGADO: 'bg-green-100 text-green-800',
       ACTIVO: 'bg-yellow-100 text-yellow-800',
-      VENCIDO: 'bg-red-100 text-red-800'
+      VENCIDO: 'bg-red-100 text-red-800',
+      ANULADO: 'bg-gray-100 text-gray-800'
     }
     return badges[estado] || 'bg-gray-100 text-gray-800'
   }
@@ -405,6 +406,15 @@ export default function Creditos() {
     cargarCreditos()
   }, [filtros.estado, filtros.id_cliente, filtros.fecha_desde, filtros.fecha_hasta])
 
+  // Filtrar créditos localmente por searchTerm para búsqueda en tiempo real
+  const creditosFiltrados = creditos.filter(credito => {
+    if (!filtros.searchTerm) return true
+    const nombreCompleto = `${credito.clientes?.nombre || ''} ${credito.clientes?.apellido || ''}`.toLowerCase()
+    const telefono = credito.clientes?.telefono || ''
+    const searchLower = filtros.searchTerm.toLowerCase()
+    return nombreCompleto.includes(searchLower) || telefono.includes(searchLower)
+  })
+
   return (
     <>
       <div className="space-y-6">
@@ -443,6 +453,7 @@ export default function Creditos() {
                 <option value="ACTIVO">ACTIVO</option>
                 <option value="VENCIDO">VENCIDO</option>
                 <option value="PAGADO">PAGADO</option>
+                <option value="ANULADO">ANULADO</option>
               </select>
             </div>
 
@@ -532,14 +543,14 @@ export default function Creditos() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {creditos.length === 0 ? (
+              {creditosFiltrados.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
-                    No hay créditos registrados
+                    {filtros.searchTerm ? 'No se encontraron créditos que coincidan con la búsqueda' : 'No hay créditos registrados'}
                   </td>
                 </tr>
               ) : (
-                creditos.map((credito) => {
+                creditosFiltrados.map((credito) => {
                   const nombreCompleto = `${credito.clientes?.nombre || ''} ${credito.clientes?.apellido || ''}`.trim()
                   const montoPagado = credito.monto_total - credito.saldo_pendiente
                   const esVencido = credito.estado === 'VENCIDO'
@@ -606,13 +617,19 @@ export default function Creditos() {
                           {/* Registrar Pago */}
                           <button
                             onClick={() => handleOpenPagoModal(credito)}
-                            disabled={credito.estado === 'PAGADO'}
+                            disabled={credito.estado === 'PAGADO' || credito.estado === 'ANULADO'}
                             className={`transition-colors ${
-                              credito.estado === 'PAGADO'
+                              credito.estado === 'PAGADO' || credito.estado === 'ANULADO'
                                 ? 'text-gray-300 cursor-not-allowed'
                                 : 'text-green-600 hover:text-green-800'
                             }`}
-                            title={credito.estado === 'PAGADO' ? 'Crédito pagado' : 'Registrar pago'}
+                            title={
+                              credito.estado === 'PAGADO' 
+                                ? 'Crédito pagado' 
+                                : credito.estado === 'ANULADO'
+                                ? 'Crédito anulado'
+                                : 'Registrar pago'
+                            }
                           >
                             <CreditCard className="w-5 h-5" />
                           </button>

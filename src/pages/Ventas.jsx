@@ -92,14 +92,16 @@ export default function Ventas() {
     }
   }, [showModal])
 
-  // Filtrar clientes por búsqueda
+  // Filtrar clientes por búsqueda (nombre, apellido o teléfono)
   useEffect(() => {
     if (searchCliente.trim() === '') {
       setClientesFiltrados(clientes)
     } else {
+      const searchLower = searchCliente.toLowerCase()
       const filtered = clientes.filter(cliente =>
-        cliente.nombre?.toLowerCase().includes(searchCliente.toLowerCase()) ||
-        cliente.ruc?.includes(searchCliente)
+        cliente.nombre?.toLowerCase().includes(searchLower) ||
+        cliente.apellido?.toLowerCase().includes(searchLower) ||
+        cliente.telefono?.includes(searchCliente)
       )
       setClientesFiltrados(filtered)
     }
@@ -128,10 +130,10 @@ export default function Ventas() {
     }
   }, [searchProducto, productos])
 
-  // Función para cargar clientes
+  // Función para cargar clientes (todos sin paginación)
   const cargarClientes = async () => {
     try {
-      const response = await getClientes()
+      const response = await getClientes({ limit: 1000 }) // Obtener todos los clientes sin límite
       const data = response.datos || response || []
       setClientes(data)
       setClientesFiltrados(data)
@@ -1054,7 +1056,7 @@ export default function Ventas() {
                   <div className="space-y-2">
                     <input
                       type="text"
-                      placeholder="Buscar cliente por nombre o RUC..."
+                      placeholder="Buscar cliente por nombre o teléfono..."
                       value={searchCliente}
                       onChange={(e) => setSearchCliente(e.target.value)}
                       className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
@@ -1067,9 +1069,9 @@ export default function Ventas() {
                             onClick={() => handleSelectCliente(cliente)}
                             className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
                           >
-                            <p className="font-medium text-gray-900">{cliente.nombre}</p>
+                            <p className="font-medium text-gray-900">{cliente.nombre} {cliente.apellido || ''}</p>
                             <p className="text-sm text-gray-600">
-                              RUC: {cliente.ruc || 'N/A'} | Tipo: {cliente.tipo}
+                              Teléfono: {cliente.telefono || 'N/A'} | Tipo: {cliente.tipo_cliente || 'N/A'}
                             </p>
                           </button>
                         ))}
@@ -1830,10 +1832,10 @@ export default function Ventas() {
                   Estás a punto de anular la siguiente venta:
                 </p>
                 <div className="space-y-1 text-sm text-gray-700">
-                  <p><span className="font-semibold">ID:</span> #{ventaAnular.id}</p>
-                  <p><span className="font-semibold">Cliente:</span> {ventaAnular.cliente?.nombre || 'N/A'}</p>
-                  <p><span className="font-semibold">Total:</span> ${parseFloat(ventaAnular.monto_total || 0).toFixed(2)}</p>
-                  <p><span className="font-semibold">Tipo:</span> {ventaAnular.tipo_venta}</p>
+                  <p><span className="font-semibold">ID:</span> #{ventaAnular.id_venta?.substring(0, 8) || 'N/A'}</p>
+                  <p><span className="font-semibold">Cliente:</span> {ventaAnular.clientes ? `${ventaAnular.clientes.nombre} ${ventaAnular.clientes.apellido || ''}`.trim() : 'N/A'}</p>
+                  <p><span className="font-semibold">Total:</span> Q{parseFloat(ventaAnular.total || 0).toFixed(2)}</p>
+                  <p><span className="font-semibold">Tipo:</span> {ventaAnular.tipo_venta || 'N/A'}</p>
                 </div>
               </div>
 

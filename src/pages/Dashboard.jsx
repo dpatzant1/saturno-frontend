@@ -57,26 +57,26 @@ export default function Dashboard() {
       console.log('🔄 Cargando datos base del dashboard...')
       
       // Cargar datos fundamentales secuencialmente para evitar rate limiting
-      const productosRes = await getProductos()
+      const productosRes = await getProductos({ limit: 10000 })
       const productos = productosRes.datos || productosRes || []
       console.log('✅ Productos cargados:', productos.length)
       
       // Pequeña pausa para ser amigable con el rate limiter
       await new Promise(resolve => setTimeout(resolve, 100))
       
-      const clientesRes = await getClientes()
+      const clientesRes = await getClientes({ limit: 10000 })
       const clientes = clientesRes.datos || clientesRes || []
       console.log('✅ Clientes cargados:', clientes.length)
       
       await new Promise(resolve => setTimeout(resolve, 100))
       
-      const ventasRes = await getVentas()
+      const ventasRes = await getVentas({ limit: 10000 })
       const ventas = ventasRes.datos || ventasRes || []
       console.log('✅ Ventas cargadas:', ventas.length)
       
       await new Promise(resolve => setTimeout(resolve, 100))
       
-      const creditosRes = await getCreditos()
+      const creditosRes = await getCreditos({ limit: 10000 })
       const creditos = creditosRes.datos || creditosRes || []
       console.log('✅ Créditos cargados:', creditos.length)
 
