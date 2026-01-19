@@ -6,20 +6,28 @@ export const useAuthStore = create(
     (set, get) => ({
       user: null,
       token: null,
+      refreshToken: null,
       isAuthenticated: false,
       
-      setAuth: (user, token) => {
+      setAuth: (user, token, refreshToken) => {
         set({ 
           user, 
-          token, 
+          token,
+          refreshToken,
           isAuthenticated: true 
         })
+      },
+      
+      // Nuevo método para actualizar solo el token (usado en renovación automática)
+      updateToken: (token, refreshToken) => {
+        set({ token, refreshToken })
       },
       
       logout: () => {
         set({ 
           user: null, 
-          token: null, 
+          token: null,
+          refreshToken: null,
           isAuthenticated: false 
         })
         localStorage.removeItem('auth-storage')

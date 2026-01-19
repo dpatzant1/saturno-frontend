@@ -27,20 +27,117 @@ api.interceptors.request.use(
   }
 )
 
-// Interceptor para manejar errores de respuesta
+// Variable para controlar si hay una renovación en curso
+let isRefreshing = false
+// Cola de peticiones que esperan al token renovado
+let failedQueue = []
+
+// Función para procesar la cola de peticiones pendientes
+const processQueue = (error, token = null) => {
+  failedQueue.forEach(prom => {
+    if (error) {
+      prom.reject(error)
+    } else {
+      prom.resolve(token)
+    }
+  })
+  
+  failedQueue = []
+}
+
+// Interceptor para manejar errores de respuesta y renovación automática de tokens
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    // Solo redirigir al login si:
+  async (error) => {
+    const originalRequest = error.config
+    
+    // Solo intentar renovar si:
     // 1. El error es 401 (no autorizado)
-    // 2. NO estamos ya en la página de login
-    // 3. NO es un intento de login fallido
-    if (error.response?.status === 401 && 
-        !window.location.pathname.includes('/login') &&
-        !error.config?.url?.includes('/auth/login')) {
-      localStorage.removeItem('auth-storage')
-      window.location.href = '/login'
+    // 2. No estamos ya en la página de login
+    // 3. No es un intento de login fallido
+    // 4. No es un intento de renovación de token fallido
+    // 5. No hemos intentado renovar esta petición antes
+    if (
+      error.response?.status === 401 &&
+      !window.location.pathname.includes('/login') &&
+      !originalRequest.url?.includes('/auth/login') &&
+      !originalRequest.url?.includes('/auth/refresh') &&
+      !originalRequest._retry
+    ) {
+      // Si ya hay una renovación en curso, esperar a que termine
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject })
+        })
+          .then(token => {
+            originalRequest.headers.Authorization = `Bearer ${token}`
+            return api(originalRequest)
+          })
+          .catch(err => {
+            return Promise.reject(err)
+          })
+      }
+
+      originalRequest._retry = true
+      isRefreshing = true
+
+      try {
+        // Obtener refreshToken del localStorage
+        const auth = JSON.parse(localStorage.getItem('auth-storage') || '{}')
+        const refreshToken = auth?.state?.refreshToken
+
+        if (!refreshToken) {
+          throw new Error('No refresh token available')
+        }
+
+        // Llamar al endpoint de renovación
+        const response = await axios.post(
+          `${API_URL}/auth/refresh`,
+          { refreshToken },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+            }
+          }
+        )
+
+        // Extraer los nuevos tokens
+        const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data.datos
+
+        // Actualizar en localStorage
+        const updatedAuth = {
+          ...auth,
+          state: {
+            ...auth.state,
+            token: newAccessToken,
+            refreshToken: newRefreshToken
+          }
+        }
+        localStorage.setItem('auth-storage', JSON.stringify(updatedAuth))
+
+        // Actualizar header de la petición original
+        originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
+        
+        // Procesar cola de peticiones pendientes con el nuevo token
+        processQueue(null, newAccessToken)
+        
+        isRefreshing = false
+
+        // Reintentar la petición original con el nuevo token
+        return api(originalRequest)
+      } catch (refreshError) {
+        // Si la renovación falla, limpiar y redirigir al login
+        processQueue(refreshError, null)
+        isRefreshing = false
+        
+        localStorage.removeItem('auth-storage')
+        window.location.href = '/login'
+        
+        return Promise.reject(refreshError)
+      }
     }
+
+    // Para cualquier otro error, simplemente rechazar
     return Promise.reject(error)
   }
 )

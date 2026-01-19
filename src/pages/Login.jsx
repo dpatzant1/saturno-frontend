@@ -21,15 +21,15 @@ export default function Login() {
 
     try {
       const response = await login(nombre, password)
-      
+
       // response tiene la estructura del backend: {success, mensaje, datos: {usuario, accessToken, refreshToken}}
-      if (!response.datos || !response.datos.accessToken) {
+      if (!response.datos || !response.datos.accessToken || !response.datos.refreshToken) {
         throw new Error('Respuesta de login inválida')
       }
-      
-      // Guardar autenticación
-      setAuth(response.datos.usuario, response.datos.accessToken)
-      
+
+      // Guardar autenticación con accessToken y refreshToken
+      setAuth(response.datos.usuario, response.datos.accessToken, response.datos.refreshToken)
+
       navigate('/dashboard')
     } catch (err) {
       setError(err.message || 'Error al iniciar sesión')
@@ -43,9 +43,9 @@ export default function Login() {
       <div className="max-w-md w-full space-y-8 bg-white p-10 rounded-xl shadow-2xl">
         <div>
           <div className="flex justify-center">
-            <img 
-              src={logo} 
-              alt="Logo Comercial Saturno" 
+            <img
+              src={logo}
+              alt="Logo Comercial Saturno"
               className="w-32 h-32 object-contain"
             />
           </div>
@@ -56,14 +56,14 @@ export default function Login() {
             Carpintería - Panel de Administración
           </p>
         </div>
-        
+
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
             <div className="bg-red-50 border border-red-400 text-red-700 px-4 py-3 rounded relative">
               {error}
             </div>
           )}
-          
+
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
               <label htmlFor="nombre" className="sr-only">
