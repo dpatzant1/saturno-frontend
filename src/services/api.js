@@ -868,6 +868,16 @@ export const getVentasDelMes = async () => {
   }
 }
 
+// Función para obtener ventas del día actual
+export const getVentasDelDia = async () => {
+  try {
+    const response = await api.get('/ventas/dashboard/dia')
+    return extraerDatos(response)
+  } catch (error) {
+    throw new Error(error.response?.data?.mensaje || 'Error al obtener ventas del día')
+  }
+}
+
 // Función para obtener productos más vendidos desde el backend
 export const getProductosMasVendidos = async (limite = 5, dias = 30) => {
   try {

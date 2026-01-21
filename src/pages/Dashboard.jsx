@@ -15,7 +15,8 @@ import {
   getClientes,
   getVentas,
   getCreditos,
-  getMovimientos
+  getMovimientos,
+  getVentasDelDia
 } from '../services/api'
 
 export default function Dashboard() {
@@ -31,7 +32,14 @@ export default function Dashboard() {
     cambioClientes: 0,
     cambioCreditos: 0,
     ventasMesAnterior: 0,
-    ventasDelMesAnterior: 0
+    ventasDelMesAnterior: 0,
+    // Campos para ventas del día
+    ventasDelDia: 0,
+    montoVentasDelDia: 0,
+    ventasDelDiaContado: 0,
+    ventasDelDiaCredito: 0,
+    montoDelDiaContado: 0,
+    montoDelDiaCredito: 0
   })
   const [alertas, setAlertas] = useState({
     productosBajoStock: [],
@@ -52,41 +60,41 @@ export default function Dashboard() {
   const cargarDatosDashboard = async () => {
     try {
       setLoading(true)
-      
+
       // OPTIMIZACIÓN: Cargar datos base una sola vez y reutilizarlos
       console.log('🔄 Cargando datos base del dashboard...')
-      
+
       // Cargar datos fundamentales secuencialmente para evitar rate limiting
       const productosRes = await getProductos({ limit: 10000 })
       const productos = productosRes.datos || productosRes || []
       console.log('✅ Productos cargados:', productos.length)
-      
+
       // Pequeña pausa para ser amigable con el rate limiter
       await new Promise(resolve => setTimeout(resolve, 100))
-      
+
       const clientesRes = await getClientes({ limit: 10000 })
       const clientes = clientesRes.datos || clientesRes || []
       console.log('✅ Clientes cargados:', clientes.length)
-      
+
       await new Promise(resolve => setTimeout(resolve, 100))
-      
+
       const ventasRes = await getVentas({ limit: 10000 })
       const ventas = ventasRes.datos || ventasRes || []
       console.log('✅ Ventas cargadas:', ventas.length)
-      
+
       await new Promise(resolve => setTimeout(resolve, 100))
-      
+
       const creditosRes = await getCreditos({ limit: 10000 })
       const creditos = creditosRes.datos || creditosRes || []
       console.log('✅ Créditos cargados:', creditos.length)
 
       // Procesar estadísticas usando los datos ya cargados
       console.log('📊 Procesando estadísticas...')
-      
+
       // Calcular estadísticas principales
       const productosActivos = productos.filter(p => p.estado).length
       const clientesActivos = clientes.filter(c => c.estado).length
-      
+
       // Ventas del mes actual
       const hoy = new Date()
       const inicioMesActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
@@ -113,6 +121,12 @@ export default function Dashboard() {
 
       console.log('✅ Procesamiento completado')
 
+      // Cargar datos de ventas del día
+      await new Promise(resolve => setTimeout(resolve, 100))
+
+      const ventasDelDia = await getVentasDelDia()
+      console.log('📊 Ventas del día cargadas:', ventasDelDia)
+
       // Actualizar estados
       setStats({
         productosActivos,
@@ -122,9 +136,16 @@ export default function Dashboard() {
         ventasDelMes: ventasDelMesActual.length,
         // Porcentajes de cambio (simplificados por ahora)
         cambioVentas: 0,
-        cambioProductos: 0, 
+        cambioProductos: 0,
         cambioClientes: 0,
-        cambioCreditos: 0
+        cambioCreditos: 0,
+        // Datos del día
+        ventasDelDia: ventasDelDia.ventas_activas || 0,
+        montoVentasDelDia: ventasDelDia.monto_total || 0,
+        ventasDelDiaContado: ventasDelDia.ventas_contado || 0,
+        ventasDelDiaCredito: ventasDelDia.ventas_credito || 0,
+        montoDelDiaContado: ventasDelDia.monto_contado || 0,
+        montoDelDiaCredito: ventasDelDia.monto_credito || 0
       })
 
       setAlertas({
@@ -148,20 +169,20 @@ export default function Dashboard() {
           { name: 'Crédito', value: tiposVenta.CREDITO || 0, color: '#F59E0B' }
         ],
         estadosCreditos: [
-          { 
-            name: 'Activos', 
-            value: creditosPendientes.filter(c => c.estado === 'ACTIVO').length, 
-            color: '#10B981' 
+          {
+            name: 'Activos',
+            value: creditosPendientes.filter(c => c.estado === 'ACTIVO').length,
+            color: '#10B981'
           },
-          { 
-            name: 'Vencidos', 
-            value: creditosPendientes.filter(c => c.estado === 'VENCIDO').length, 
-            color: '#EF4444' 
+          {
+            name: 'Vencidos',
+            value: creditosPendientes.filter(c => c.estado === 'VENCIDO').length,
+            color: '#EF4444'
           },
-          { 
-            name: 'Pagados', 
-            value: creditos.filter(c => c.estado === 'PAGADO').length, 
-            color: '#6B7280' 
+          {
+            name: 'Pagados',
+            value: creditos.filter(c => c.estado === 'PAGADO').length,
+            color: '#6B7280'
           }
         ]
       })
@@ -171,14 +192,21 @@ export default function Dashboard() {
       // Mantener el dashboard funcional con datos vacíos en caso de error
       setStats({
         productosActivos: 0,
-        clientesActivos: 0, 
+        clientesActivos: 0,
         ventasMes: 0,
         creditosPendientes: 0,
         ventasDelMes: 0,
         cambioVentas: 0,
         cambioProductos: 0,
         cambioClientes: 0,
-        cambioCreditos: 0
+        cambioCreditos: 0,
+        // Datos del día vacíos en caso de error
+        ventasDelDia: 0,
+        montoVentasDelDia: 0,
+        ventasDelDiaContado: 0,
+        ventasDelDiaCredito: 0,
+        montoDelDiaContado: 0,
+        montoDelDiaCredito: 0
       })
     } finally {
       setLoading(false)
@@ -189,7 +217,7 @@ export default function Dashboard() {
   const procesarVentasPorDia = (ventas, dias = 30) => {
     try {
       const ventasPorDia = {}
-      
+
       // Inicializar últimos X días con 0
       for (let i = dias - 1; i >= 0; i--) {
         const fecha = new Date()
@@ -204,7 +232,7 @@ export default function Dashboard() {
         .forEach(venta => {
           const fechaVenta = new Date(venta.fecha_venta || venta.created_at)
           const key = fechaVenta.toISOString().split('T')[0]
-          
+
           if (ventasPorDia[key]) {
             ventasPorDia[key].total += Number(venta.total || 0)
             ventasPorDia[key].cantidad += 1
@@ -237,7 +265,7 @@ export default function Dashboard() {
       showPercent: false
     },
     {
-      name: 'Clientes Activos', 
+      name: 'Clientes Activos',
       value: loading ? '...' : stats.clientesActivos.toString(),
       icon: Users,
       color: 'bg-green-500',
@@ -245,6 +273,19 @@ export default function Dashboard() {
       changePercent: stats.cambioClientes,
       isPositive: stats.cambioClientes >= 0,
       showPercent: false
+    },
+    {
+      name: 'Ventas del Día',
+      value: loading ? '...' : formatCurrency(stats.montoVentasDelDia),
+      icon: ShoppingCart,
+      color: 'bg-indigo-500',
+      change: loading ? '...' : `${stats.ventasDelDia} ventas realizadas hoy`,
+      changePercent: 0,
+      isPositive: true,
+      showPercent: false,
+      extraInfo: loading ? '' :
+        `Contado: ${formatCurrency(stats.montoDelDiaContado)} (${stats.ventasDelDiaContado} ventas) · ` +
+        `Crédito: ${formatCurrency(stats.montoDelDiaCredito)} (${stats.ventasDelDiaCredito} ventas)`
     },
     {
       name: 'Ventas del Mes',
@@ -280,7 +321,7 @@ export default function Dashboard() {
           <p className="text-gray-600 mt-2">Cargando datos...</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {[1,2,3,4].map(i => (
+          {[1, 2, 3, 4].map(i => (
             <div key={i} className="bg-white rounded-lg shadow p-6 animate-pulse">
               <div className="h-20 bg-gray-200 rounded"></div>
             </div>
@@ -296,7 +337,7 @@ export default function Dashboard() {
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
         <p className="text-gray-600 mt-2">Resumen general del sistema de carpintería</p>
-        <button 
+        <button
           onClick={cargarDatosDashboard}
           className="mt-2 inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
@@ -434,15 +475,15 @@ export default function Dashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={graficos.ventasPorDia}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="fecha" 
+                  <XAxis
+                    dataKey="fecha"
                     tickFormatter={(value) => {
                       const date = new Date(value)
                       return `${date.getDate()}/${date.getMonth() + 1}`
                     }}
                   />
                   <YAxis tickFormatter={(value) => `Q${value.toLocaleString()}`} />
-                  <Tooltip 
+                  <Tooltip
                     labelFormatter={(value) => new Date(value).toLocaleDateString()}
                     formatter={(value) => [`Q${Number(value).toLocaleString()}`, 'Ventas']}
                   />
@@ -468,12 +509,12 @@ export default function Dashboard() {
           <h3 className="text-lg font-semibold text-gray-900 mb-6">Productos Más Vendidos</h3>
           <div className="h-96">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart 
-                data={graficos.productosMasVendidos} 
+              <BarChart
+                data={graficos.productosMasVendidos}
                 margin={{ top: 20, right: 30, left: 20, bottom: 80 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis 
+                <XAxis
                   dataKey="nombre"
                   angle={-45}
                   textAnchor="end"
@@ -481,11 +522,11 @@ export default function Dashboard() {
                   interval={0}
                   tick={{ fontSize: 12, fill: '#374151' }}
                 />
-                <YAxis 
+                <YAxis
                   tick={{ fontSize: 12, fill: '#6B7280' }}
                   label={{ value: 'Unidades Vendidas', angle: -90, position: 'insideLeft' }}
                 />
-                <Tooltip 
+                <Tooltip
                   formatter={(value) => [`${value} unidades`, 'Vendidas']}
                   contentStyle={{
                     backgroundColor: '#1F2937',
@@ -495,8 +536,8 @@ export default function Dashboard() {
                     fontSize: '13px'
                   }}
                 />
-                <Bar 
-                  dataKey="total_vendido" 
+                <Bar
+                  dataKey="total_vendido"
                   fill="#3B82F6"
                   radius={[8, 8, 0, 0]}
                   barSize={60}
@@ -545,7 +586,7 @@ export default function Dashboard() {
             <div className="flex justify-between items-center p-3 bg-blue-50 rounded">
               <span className="text-sm font-medium text-blue-900">Promedio ventas/día:</span>
               <span className="text-sm font-bold text-blue-900">
-                {formatCurrency(graficos.ventasPorDia.length > 0 ? 
+                {formatCurrency(graficos.ventasPorDia.length > 0 ?
                   graficos.ventasPorDia.reduce((sum, v) => sum + v.total, 0) / graficos.ventasPorDia.length : 0
                 )}
               </span>
