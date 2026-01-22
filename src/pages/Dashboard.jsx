@@ -230,8 +230,9 @@ export default function Dashboard() {
       ventas
         .filter(venta => venta.estado === 'ACTIVA')
         .forEach(venta => {
-          const fechaVenta = new Date(venta.fecha_venta || venta.created_at)
-          const key = fechaVenta.toISOString().split('T')[0]
+          // Extraer solo la fecha en formato YYYY-MM-DD sin conversión de zona horaria
+          const fechaVenta = venta.fecha_venta || venta.created_at
+          const key = fechaVenta.split('T')[0] // Obtener solo YYYY-MM-DD
 
           if (ventasPorDia[key]) {
             ventasPorDia[key].total += Number(venta.total || 0)
@@ -478,13 +479,18 @@ export default function Dashboard() {
                   <XAxis
                     dataKey="fecha"
                     tickFormatter={(value) => {
-                      const date = new Date(value)
-                      return `${date.getDate()}/${date.getMonth() + 1}`
+                      // NO usar new Date() - parsear directamente del string YYYY-MM-DD
+                      const parts = value.split('-')
+                      return `${parseInt(parts[2])}/${parseInt(parts[1])}`
                     }}
                   />
                   <YAxis tickFormatter={(value) => `Q${value.toLocaleString()}`} />
                   <Tooltip
-                    labelFormatter={(value) => new Date(value).toLocaleDateString()}
+                    labelFormatter={(value) => {
+                      // Parsear YYYY-MM-DD directamente sin new Date()
+                      const parts = value.split('-')
+                      return `${parseInt(parts[2])}/${parseInt(parts[1])}/${parts[0]}`
+                    }}
                     formatter={(value) => [`Q${Number(value).toLocaleString()}`, 'Ventas']}
                   />
                   <Area
