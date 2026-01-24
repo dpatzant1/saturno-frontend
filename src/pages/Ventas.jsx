@@ -20,7 +20,7 @@ export default function Ventas() {
   const [showAnularModal, setShowAnularModal] = useState(false)
   const [ventaAnular, setVentaAnular] = useState(null)
   const [motivoAnulacion, setMotivoAnulacion] = useState('')
-  
+
   // Estados de paginación
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
@@ -30,13 +30,13 @@ export default function Ventas() {
     hasNextPage: false,
     hasPrevPage: false
   })
-  
+
   // Estados para notificaciones toast
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' })
-  
+
   // Estado para controlar si el modal muestra el formulario o la venta registrada
   const [ventaRegistrada, setVentaRegistrada] = useState(null)
-  
+
   // Estados de filtros
   const [filtros, setFiltros] = useState({
     searchTerm: '',
@@ -159,7 +159,7 @@ export default function Ventas() {
   const cargarVentas = async () => {
     try {
       setLoading(true)
-      
+
       // Preparar parámetros de filtrado y paginación
       const params = {
         page: currentPage,
@@ -170,7 +170,7 @@ export default function Ventas() {
       if (filtros.fechaDesde) params.fecha_desde = filtros.fechaDesde
       if (filtros.fechaHasta) params.fecha_hasta = filtros.fechaHasta
       if (filtros.searchTerm) params.busqueda = filtros.searchTerm
-      
+
       const response = await getVentas(params)
       setVentas(response.datos || response || [])
       setPagination(response.paginacion || {
@@ -297,7 +297,7 @@ export default function Ventas() {
 
     console.log('✅ Agregando producto al carrito:', nuevoItem)
     setCarrito([...carrito, nuevoItem])
-    
+
     // Limpiar selección
     setProductoSeleccionado(null)
     setSearchProducto('')
@@ -311,7 +311,7 @@ export default function Ventas() {
 
   const actualizarCantidadCarrito = (idProducto, nuevaCantidad) => {
     const producto = productos.find(p => p.id_producto === idProducto)
-    
+
     if (nuevaCantidad <= 0) {
       mostrarToast('La cantidad debe ser mayor a 0.', 'error')
       return
@@ -322,8 +322,8 @@ export default function Ventas() {
       return
     }
 
-    setCarrito(carrito.map(item => 
-      item.id_producto === idProducto 
+    setCarrito(carrito.map(item =>
+      item.id_producto === idProducto
         ? { ...item, cantidad: nuevaCantidad, subtotal: nuevaCantidad * item.precio_unitario }
         : item
     ))
@@ -335,8 +335,8 @@ export default function Ventas() {
       return
     }
 
-    setCarrito(carrito.map(item => 
-      item.id_producto === idProducto 
+    setCarrito(carrito.map(item =>
+      item.id_producto === idProducto
         ? { ...item, precio_unitario: nuevoPrecio, subtotal: item.cantidad * nuevoPrecio }
         : item
     ))
@@ -353,19 +353,19 @@ export default function Ventas() {
   // Función para calcular el monto del descuento
   const calcularDescuento = () => {
     const subtotal = calcularTotalVenta()
-    
+
     if (descuentoTipo === 'NINGUNO' || descuentoValor === '' || descuentoValor === 0) {
       return 0
     }
-    
+
     if (descuentoTipo === 'PORCENTAJE') {
       return (subtotal * parseFloat(descuentoValor)) / 100
     }
-    
+
     if (descuentoTipo === 'MONTO') {
       return parseFloat(descuentoValor)
     }
-    
+
     return 0
   }
 
@@ -421,7 +421,7 @@ export default function Ventas() {
       if (formVenta.tipo_venta === 'CREDITO') {
         const totalVenta = calcularTotalConDescuento() // Usar total con descuento
         const creditoDisponible = clienteSeleccionado.credito_disponible || 0
-        
+
         if (totalVenta > creditoDisponible) {
           mostrarToast(`El total de la venta (Q${totalVenta.toFixed(2)}) excede el crédito disponible del cliente (Q${creditoDisponible.toFixed(2)}).`, 'error')
           return
@@ -464,12 +464,12 @@ export default function Ventas() {
           id_cliente: formVenta.id_cliente,
           productos: productos
         }
-        
+
         // Agregar descuento si existe
         if (descuento) {
           ventaData.descuento = descuento
         }
-        
+
         console.log('📤 Enviando venta CONTADO:', ventaData)
         response = await createVentaContado(ventaData)
       } else {
@@ -479,22 +479,22 @@ export default function Ventas() {
           dias_credito: formVenta.dias_credito,
           productos: productos
         }
-        
+
         // Agregar descuento si existe
         if (descuento) {
           ventaData.descuento = descuento
         }
-        
+
         console.log('📤 Enviando venta CREDITO:', ventaData)
         response = await createVentaCredito(ventaData)
       }
 
       // Éxito - Mostrar toast
       mostrarToast(`¡Venta registrada exitosamente! ${formVenta.tipo_venta === 'CREDITO' ? 'Se ha creado el crédito asociado.' : ''}`, 'success')
-      
+
       // Recargar lista de ventas
       await cargarVentas()
-      
+
       // Cargar el detalle de la venta recién creada
       const idVentaCreada = response.venta?.id_venta || response.id_venta
       if (idVentaCreada) {
@@ -550,121 +550,319 @@ export default function Ventas() {
     setMotivoAnulacion('')
   }
 
-  // Función para generar PDF de la venta
+  // Configuración para comprobantes duplicados
+  const CONFIG_PDF = {
+    UMBRAL_PRODUCTOS: 13,  // Aumentado de 6 a 13
+    PENALIZACION_DESCUENTO: 1,
+    PENALIZACION_CREDITO: 1
+  }
+
+  // Función helper: Agregar línea separadora punteada
+  const agregarLineaSeparadora = (doc, y) => {
+    doc.setLineDash([2, 2]) // Línea punteada
+    doc.setLineWidth(0.5)
+    doc.setDrawColor(150, 150, 150) // Gris
+    const pageWidth = doc.internal.pageSize.width
+    doc.line(30, y, pageWidth - 30, y)  // De margen a margen
+    doc.setLineDash([]) // Resetear a línea sólida
+    doc.setDrawColor(0, 0, 0) // Negro
+  }
+
+  // Función helper: Renderizar un comprobante individual (MANUAL - sin autoTable)
+  const renderizarComprobante = (doc, venta, config) => {
+    console.log('🎨 renderizarComprobante llamado con:', {
+      yInicial: config.yInicial,
+      etiqueta: config.etiqueta,
+      optimizado: config.optimizado,
+      numProductos: venta.detalles.length
+    })
+
+    const { yInicial, etiqueta, optimizado } = config
+    let y = yInicial
+
+    // Dimensiones según modo
+    const sizes = optimizado ? {
+      headerFont: 22,         // 20 * 1.1 = 22
+      empresaFont: 12,        // 11 * 1.1 ≈ 12
+      dataFont: 10,           // 9 * 1.1 ≈ 10
+      totalFont: 10,          // 9 * 1.1 ≈ 10
+      estadoFont: 9,          // 8 * 1.1 ≈ 9
+      lineSpacing: 8,         // 7 * 1.1 ≈ 8
+      tableFontSize: 9,       // 8 * 1.1 ≈ 9
+      tableHeadFontSize: 10   // 9 * 1.1 ≈ 10
+    } : {
+      headerFont: 26,         // 24 * 1.1 ≈ 26
+      empresaFont: 13,        // 12 * 1.1 ≈ 13
+      dataFont: 11,           // 10 * 1.1 = 11
+      totalFont: 11,          // 10 * 1.1 = 11
+      estadoFont: 9,          // 8 * 1.1 ≈ 9
+      lineSpacing: 8,         // 7 * 1.1 ≈ 8
+      tableFontSize: 10,      // 9 * 1.1 ≈ 10
+      tableHeadFontSize: 11   // 10 * 1.1 = 11
+    }
+
+    // 1. Header con etiqueta
+    doc.setFontSize(sizes.headerFont)
+    doc.setFont('helvetica', 'bold')
+    const centerX = doc.internal.pageSize.width / 2  // ~297.5pt
+    doc.text('VENTA', centerX, y + 15, { align: 'center' })
+
+    // Etiqueta (CLIENTE / EMPRESA)
+    doc.setFontSize(9)
+    doc.setFont('helvetica', 'italic')
+    doc.setTextColor(100, 100, 100)
+    doc.text(etiqueta, centerX, y + (optimizado ? 28 : 30), { align: 'center' })
+    doc.setTextColor(0, 0, 0)
+
+    // 2. Empresa
+    y += (optimizado ? 35 : 45)
+    doc.setFontSize(sizes.empresaFont)
+    doc.setFont('helvetica', 'bold')
+    doc.text('COMERCIAL SATURNO', doc.internal.pageSize.width - 60, y, { align: 'right' })
+
+    // 3. Datos de venta
+    y += (optimizado ? 15 : 18)
+    doc.setFontSize(sizes.dataFont)
+    doc.setFont('helvetica', 'normal')
+
+    const fechaVenta = venta.fecha_venta
+      ? new Date(venta.fecha_venta).toLocaleDateString('es-GT')
+      : new Date().toLocaleDateString('es-GT')
+    const nombreCliente = venta.clientes
+      ? `${venta.clientes.nombre} ${venta.clientes.apellido || ''}`.trim()
+      : 'N/A'
+
+    const leftMargin = 40
+    doc.text(`FECHA: ${fechaVenta}`, leftMargin, y)
+    y += sizes.lineSpacing + 3
+    doc.text(`CLIENTE: ${nombreCliente}`, leftMargin, y)
+    y += sizes.lineSpacing + 3
+    doc.text(`ID: #${venta.id_venta?.substring(0, 8) || 'N/A'}`, leftMargin, y)
+    y += sizes.lineSpacing + 3
+    doc.text(`TIPO: ${venta.tipo_venta || 'N/A'}`, leftMargin, y)
+
+    if (venta.tipo_venta === 'CONTADO' && venta.metodo_pago) {
+      y += sizes.lineSpacing + 3
+      doc.text(`PAGO: ${venta.metodo_pago}`, leftMargin, y)
+    }
+
+    // 4. Tabla de productos (MANUAL - sin autoTable)
+    y += (optimizado ? sizes.lineSpacing + 2 : sizes.lineSpacing + 5)
+
+    const marginLeft = optimizado ? 30 : 40    // Aumentado para mejor visualización
+    const marginRight = optimizado ? 30 : 40
+    const pageWidth = doc.internal.pageSize.width  // ~595pt
+    const tableWidth = pageWidth - marginLeft - marginRight  // ~535pt
+
+    // Anchos de columnas (ajustados para unidades en puntos)
+    const colWidths = optimizado
+      ? [tableWidth - 140, 40, 50, 50]  // [Producto, Cant, Precio, Total]
+      : [tableWidth - 150, 50, 50, 50]
+
+    const rowHeight = optimizado ? 18 : 20      // Aumentado de 14/16 para mucho más padding
+    const headerHeight = optimizado ? 18 : 18   // Aumentado de 14
+
+    // Dibujar header de tabla
+    doc.setFillColor(0, 0, 0)
+    doc.rect(marginLeft, y, tableWidth, headerHeight, 'F')
+
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(sizes.tableHeadFontSize)
+    doc.setFont('helvetica', 'bold')
+
+    let xPos = marginLeft + 5
+    const headerTextY = y + (headerHeight / 2) + 4  // Mejor centrado vertical
+    doc.text('PRODUCTO', xPos, headerTextY)
+    xPos += colWidths[0]
+    doc.text('CANT', xPos + colWidths[1] / 2, headerTextY, { align: 'center' })
+    xPos += colWidths[1]
+    doc.text('PRECIO', xPos + colWidths[2] - 5, headerTextY, { align: 'right' })
+    xPos += colWidths[2]
+    doc.text('TOTAL', xPos + colWidths[3] - 5, headerTextY, { align: 'right' })
+
+    y += headerHeight
+
+    // Dibujar filas de productos
+    doc.setTextColor(0, 0, 0)
+    doc.setFontSize(sizes.tableFontSize)
+    doc.setFont('helvetica', 'normal')
+    doc.setDrawColor(200, 200, 200)
+    doc.setLineWidth(0.1)
+
+    venta.detalles.forEach((detalle, index) => {
+      // Fondo alternado (opcional)
+      if (index % 2 === 0) {
+        doc.setFillColor(250, 250, 250)
+        doc.rect(marginLeft, y, tableWidth, rowHeight, 'F')
+      }
+
+      // Bordes de celda
+      doc.rect(marginLeft, y, tableWidth, rowHeight, 'S')
+
+      // Contenido
+      xPos = marginLeft + 5
+      const productoNombre = detalle.productos?.nombre || 'N/A'
+      const rowTextY = y + (rowHeight / 2) + 4  // Mejor centrado vertical
+      doc.text(productoNombre.substring(0, optimizado ? 40 : 50), xPos, rowTextY)
+
+      xPos += colWidths[0]
+      doc.text(detalle.cantidad.toString(), xPos + colWidths[1] / 2, rowTextY, { align: 'center' })
+
+      xPos += colWidths[1]
+      doc.text(`Q${parseFloat(detalle.precio_unitario || 0).toFixed(2)}`, xPos + colWidths[2] - 5, rowTextY, { align: 'right' })
+
+      xPos += colWidths[2]
+      doc.text(`Q${parseFloat(detalle.subtotal || 0).toFixed(2)}`, xPos + colWidths[3] - 5, rowTextY, { align: 'right' })
+
+      y += rowHeight
+    })
+
+    // Borde final de tabla
+    doc.setDrawColor(0, 0, 0)
+    doc.setLineWidth(0.5)
+    doc.line(marginLeft, y, marginLeft + tableWidth, y)
+
+    // 5. Totales
+    y += (optimizado ? 14 : 18)  // Mayor padding después de la tabla
+    doc.setFontSize(sizes.dataFont)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(0, 0, 0)
+
+    const rightMargin = doc.internal.pageSize.width - 60
+    const labelX = rightMargin - 110  // Posición consistente para etiquetas
+    const subtotal = parseFloat(venta.subtotal || venta.total || 0)
+    doc.text('Subtotal:', labelX, y)
+    doc.text(`Q${subtotal.toFixed(2)}`, rightMargin, y, { align: 'right' })
+
+    // Descuento (si aplica)
+    if (venta.descuento_tipo && venta.descuento_tipo !== 'NINGUNO' && venta.descuento_monto > 0) {
+      y += (optimizado ? 12 : 14)  // Espaciado consistente entre líneas
+      const descTexto = venta.descuento_tipo === 'PORCENTAJE'
+        ? `Desc. (${venta.descuento_valor}%):`
+        : 'Descuento:'
+      doc.text(descTexto, labelX, y)
+      doc.text(`-Q${parseFloat(venta.descuento_monto || 0).toFixed(2)}`, rightMargin, y, { align: 'right' })
+    }
+
+    // Total con fondo negro
+    y += (optimizado ? 14 : 16)  // Mayor padding antes del total
+    const rectHeight = optimizado ? 16 : 18  // Rectángulo más alto para mejor padding
+    const rectWidth = 135  // Ligeramente más ancho
+    const rectPaddingTop = optimizado ? 11 : 13  // Padding interno superior
+    doc.setFillColor(0, 0, 0)
+    doc.rect(rightMargin - rectWidth, y - rectPaddingTop, rectWidth, rectHeight, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(sizes.totalFont)
+    doc.text('Total', labelX, y)
+    doc.text(`Q${parseFloat(venta.total || 0).toFixed(2)}`, rightMargin - 5, y, { align: 'right' })
+
+    // 6. Estado
+    doc.setTextColor(0, 0, 0)
+    doc.setFontSize(sizes.estadoFont)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Estado: ${venta.estado || 'N/A'}`, 40, y + (optimizado ? 10 : 12))
+
+    // 7. Nota crédito (si aplica)
+    if (venta.tipo_venta === 'CREDITO' && venta.credito) {
+      doc.setFont('helvetica', 'italic')
+      doc.setFontSize(sizes.estadoFont)
+      const fechaVenc = venta.credito.fecha_vencimiento
+        ? new Date(venta.credito.fecha_vencimiento).toLocaleDateString('es-GT')
+        : 'N/A'
+      doc.text(`Crédito - Vence: ${fechaVenc}`, 40, y + (optimizado ? 16 : 20))
+    }
+
+    // Retornar la posición Y final para debugging
+    return y + (optimizado ? 20 : 24)
+  }
+
+  // Función principal para generar PDF de la venta
   const generarPDFVenta = (venta) => {
     if (!venta || !venta.detalles || venta.detalles.length === 0) {
       mostrarToast('No hay información suficiente para generar el PDF', 'error')
       return
     }
 
-    const doc = new jsPDF()
-
-    // Header
-    doc.setFontSize(24)
-    doc.setFont('helvetica', 'bold')
-    doc.text('VENTA', 105, 20, { align: 'center' })
-
-    // Empresa
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'bold')
-    doc.text('COMERCIAL SATURNO', 150, 35)
-    
-    // Fecha y Cliente
-    doc.setFontSize(10)
-    doc.setFont('helvetica', 'normal')
-    const fechaVenta = venta.fecha_venta ? new Date(venta.fecha_venta).toLocaleDateString('es-GT') : new Date().toLocaleDateString('es-GT')
-    doc.text(`FECHA: ${fechaVenta}`, 20, 45)
-    const nombreCliente = venta.clientes ? `${venta.clientes.nombre} ${venta.clientes.apellido || ''}`.trim() : 'N/A'
-    doc.text(`CLIENTE: ${nombreCliente}`, 20, 52)
-
-    // ID de Venta
-    doc.text(`ID VENTA: #${venta.id_venta?.substring(0, 8) || 'N/A'}`, 20, 59)
-
-    // Tipo de Venta y Método de Pago
-    let lineaActual = 66
-    doc.text(`TIPO: ${venta.tipo_venta || 'N/A'}`, 20, lineaActual)
-    if (venta.tipo_venta === 'CONTADO' && venta.metodo_pago) {
-      doc.text(`MÉTODO DE PAGO: ${venta.metodo_pago}`, 20, lineaActual + 7)
-      lineaActual += 7
-    }
-
-    // Línea separadora
-    doc.setLineWidth(0.5)
-    doc.line(20, lineaActual + 5, 190, lineaActual + 5)
-
-    // Tabla de productos
-    const tableData = venta.detalles.map(detalle => [
-      detalle.productos?.nombre || 'N/A',
-      detalle.cantidad.toString().padStart(3, '0'),
-      `Q${parseFloat(detalle.precio_unitario || 0).toFixed(2)}`,
-      `Q${parseFloat(detalle.subtotal || 0).toFixed(2)}`
-    ])
-
-    autoTable(doc, {
-      startY: lineaActual + 12,
-      head: [['PRODUCTO', 'CANTIDAD', 'PRECIO', 'TOTAL']],
-      body: tableData,
-      theme: 'grid',
-      headStyles: {
-        fillColor: [0, 0, 0],
-        textColor: [255, 255, 255],
-        fontStyle: 'bold',
-        halign: 'center'
-      },
-      bodyStyles: {
-        textColor: [0, 0, 0]
-      },
-      columnStyles: {
-        0: { halign: 'left' },
-        1: { halign: 'center' },
-        2: { halign: 'right' },
-        3: { halign: 'right' }
-      },
-      margin: { left: 20, right: 20 }
+    // Crear PDF con configuración explícita: A4, vertical, puntos
+    const doc = new jsPDF({
+      orientation: 'portrait',  // Vertical
+      unit: 'pt',              // Unidades en puntos
+      format: 'a4'             // Formato A4 (595.28 x 841.89 pt)
     })
 
-    // Subtotal, descuento y total
-    const finalY = doc.lastAutoTable.finalY || 150
-    doc.setTextColor(0, 0, 0)
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(10)
-    
-    // Subtotal
-    const subtotal = parseFloat(venta.subtotal || venta.total || 0)
-    doc.text('Subtotal:', 135, finalY + 10)
-    doc.text(`Q${subtotal.toFixed(2)}`, 185, finalY + 10, { align: 'right' })
-    
-    // Descuento (si aplica)
-    let descuentoY = finalY + 10
-    if (venta.descuento_tipo && venta.descuento_tipo !== 'NINGUNO' && venta.descuento_monto > 0) {
-      descuentoY = finalY + 17
-      const descuentoTexto = venta.descuento_tipo === 'PORCENTAJE' 
-        ? `Descuento (${venta.descuento_valor}%):`
-        : `Descuento:`
-      doc.text(descuentoTexto, 135, descuentoY)
-      doc.text(`-Q${parseFloat(venta.descuento_monto || 0).toFixed(2)}`, 185, descuentoY, { align: 'right' })
-    }
-    
-    // Total con fondo negro
-    const totalY = descuentoY + 7
-    doc.setFillColor(0, 0, 0)
-    doc.rect(130, totalY - 5, 60, 10, 'F')
-    doc.setTextColor(255, 255, 255)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Total', 135, totalY + 1)
-    doc.text(`Q${parseFloat(venta.total || 0).toFixed(2)}`, 185, totalY + 1, { align: 'right' })
+    console.log('📄 PDF creado con dimensiones:', doc.internal.pageSize.width, 'x', doc.internal.pageSize.height, 'pt')
 
-    // Estado de la venta
-    doc.setTextColor(0, 0, 0)
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'normal')
-    doc.text(`Estado: ${venta.estado || 'N/A'}`, 20, totalY + 15)
+    const nombreCliente = venta.clientes
+      ? `${venta.clientes.nombre} ${venta.clientes.apellido || ''}`.trim()
+      : 'N/A'
 
-    // Nota al pie (solo para créditos)
-    if (venta.tipo_venta === 'CREDITO' && venta.credito) {
-      doc.setFont('helvetica', 'italic')
-      const fechaVencimiento = venta.credito.fecha_vencimiento ? new Date(venta.credito.fecha_vencimiento).toLocaleDateString('es-GT') : 'N/A'
-      doc.text(`Crédito - Fecha de vencimiento: ${fechaVencimiento}`, 20, totalY + 22)
+    // Determinar número de productos y penalizaciones
+    const numProductos = venta.detalles.length
+    const tieneDescuento = venta.descuento_tipo && venta.descuento_tipo !== 'NINGUNO' && venta.descuento_monto > 0
+    const esCredito = venta.tipo_venta === 'CREDITO'
+    const penalizacion = (tieneDescuento ? CONFIG_PDF.PENALIZACION_DESCUENTO : 0) +
+      (esCredito ? CONFIG_PDF.PENALIZACION_CREDITO : 0)
+
+    const umbralAjustado = CONFIG_PDF.UMBRAL_PRODUCTOS - penalizacion
+    const cabenDosComprobantes = numProductos <= umbralAjustado
+
+    if (cabenDosComprobantes) {
+      // MODO: 2 comprobantes en 1 hoja
+      console.log(`📄 Generando 2 comprobantes en 1 hoja (${numProductos} productos)`)
+      console.log('🔍 Umbral ajustado:', umbralAjustado)
+      console.log('🔍 Número de páginas inicial:', doc.internal.getNumberOfPages())
+      console.log('🔍 Altura de página A4:', doc.internal.pageSize.height, 'puntos')
+
+      // Comprobante 1: CLIENTE (margen superior aumentado 15%)
+      console.log('✅ PASO 1: Renderizando comprobante CLIENTE en Y=12...')
+      const finalY1 = renderizarComprobante(doc, venta, {
+        yInicial: 12,  // Aumentado de 10 a 12 (+20% para mejor margen)
+        etiqueta: 'COPIA - CLIENTE',
+        optimizado: true
+      })
+      console.log('✅ Comprobante CLIENTE completado. Y final:', finalY1)
+      console.log('🔍 Número de páginas después del comprobante 1:', doc.internal.getNumberOfPages())
+
+      // Línea separadora punteada (ajustada a Y=400)
+      console.log('✅ PASO 2: Dibujando línea separadora en Y=400...')
+      agregarLineaSeparadora(doc, 400)
+      console.log('✅ Línea separadora completada')
+
+      // Comprobante 2: EMPRESA (ajustado a Y=412 para mantener proporción)
+      console.log('✅ PASO 3: Renderizando comprobante EMPRESA en Y=412...')
+      const finalY2 = renderizarComprobante(doc, venta, {
+        yInicial: 412,  // Ajustado de 410 a 412
+        etiqueta: 'COPIA - EMPRESA',
+        optimizado: true
+      })
+      console.log('✅ Comprobante EMPRESA completado. Y final:', finalY2)
+      console.log('🔍 Número de páginas final:', doc.internal.getNumberOfPages())
+
+      if (finalY2 > doc.internal.pageSize.height) {
+        console.warn('⚠️ ADVERTENCIA: El segundo comprobante se sale de la página!')
+        console.warn('⚠️ Y final:', finalY2, '> Altura página:', doc.internal.pageSize.height)
+      }
+    } else {
+      // MODO: 1 comprobante por hoja (2 hojas en total)
+      console.log(`📄 Generando 2 comprobantes en 2 hojas (${numProductos} productos)`)
+
+      // Página 1: CLIENTE
+      renderizarComprobante(doc, venta, {
+        yInicial: 20,
+        etiqueta: 'COPIA - CLIENTE',
+        optimizado: false
+      })
+
+      // Nueva página
+      doc.addPage()
+
+      // Página 2: EMPRESA
+      renderizarComprobante(doc, venta, {
+        yInicial: 20,
+        etiqueta: 'COPIA - EMPRESA',
+        optimizado: false
+      })
     }
 
     // Guardar PDF
@@ -699,11 +897,10 @@ export default function Ventas() {
     <>
       {/* Notificación Toast */}
       {toast.show && (
-        <div className={`fixed top-4 right-4 z-[9999] px-6 py-4 rounded-lg shadow-lg transform transition-all duration-300 animate-slideIn ${
-          toast.type === 'success' 
-            ? 'bg-green-500 text-white' 
-            : 'bg-red-500 text-white'
-        }`}>
+        <div className={`fixed top-4 right-4 z-[9999] px-6 py-4 rounded-lg shadow-lg transform transition-all duration-300 animate-slideIn ${toast.type === 'success'
+          ? 'bg-green-500 text-white'
+          : 'bg-red-500 text-white'
+          }`}>
           <div className="flex items-center gap-3">
             <div className="flex-shrink-0">
               {toast.type === 'success' ? (
@@ -723,172 +920,170 @@ export default function Ventas() {
 
       <div className="space-y-6">
 
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Ventas</h1>
-          <p className="text-gray-600 mt-2">Registro de ventas realizadas</p>
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Ventas</h1>
+            <p className="text-gray-600 mt-2">Registro de ventas realizadas</p>
+          </div>
+          <button
+            onClick={handleOpenModal}
+            className="mt-4 md:mt-0 inline-flex items-center px-4 py-2 bg-carpinteria-medio text-white rounded-lg hover:bg-carpinteria-rojizo transition-colors"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Nueva Venta
+          </button>
         </div>
-        <button 
-          onClick={handleOpenModal}
-          className="mt-4 md:mt-0 inline-flex items-center px-4 py-2 bg-carpinteria-medio text-white rounded-lg hover:bg-carpinteria-rojizo transition-colors"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          Nueva Venta
-        </button>
-      </div>
 
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Búsqueda */}
-          <div className="md:col-span-2">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="Buscar por cliente..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
-                value={filtros.searchTerm}
-                onChange={(e) => setFiltros({ ...filtros, searchTerm: e.target.value })}
-              />
+        <div className="bg-white rounded-lg shadow p-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Búsqueda */}
+            <div className="md:col-span-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  placeholder="Buscar por cliente..."
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
+                  value={filtros.searchTerm}
+                  onChange={(e) => setFiltros({ ...filtros, searchTerm: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Filtro por Tipo */}
+            <div>
+              <select
+                value={filtros.tipo}
+                onChange={(e) => setFiltros({ ...filtros, tipo: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
+              >
+                <option value="">Todos los tipos</option>
+                <option value="CONTADO">Contado</option>
+                <option value="CREDITO">Crédito</option>
+              </select>
+            </div>
+
+            {/* Filtro por Estado */}
+            <div>
+              <select
+                value={filtros.estado}
+                onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
+              >
+                <option value="">Todos los estados</option>
+                <option value="ACTIVA">Activa</option>
+                <option value="ANULADA">Anulada</option>
+              </select>
             </div>
           </div>
-
-          {/* Filtro por Tipo */}
-          <div>
-            <select
-              value={filtros.tipo}
-              onChange={(e) => setFiltros({ ...filtros, tipo: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
-            >
-              <option value="">Todos los tipos</option>
-              <option value="CONTADO">Contado</option>
-              <option value="CREDITO">Crédito</option>
-            </select>
-          </div>
-
-          {/* Filtro por Estado */}
-          <div>
-            <select
-              value={filtros.estado}
-              onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
-            >
-              <option value="">Todos los estados</option>
-              <option value="ACTIVA">Activa</option>
-              <option value="ANULADA">Anulada</option>
-            </select>
-          </div>
         </div>
-      </div>
 
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        {loading ? (
-          <div className="px-6 py-12 text-center text-gray-500">
-            Cargando ventas...
-          </div>
-        ) : (
-          <>
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-carpinteria-oscuro">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase">Fecha</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase">ID</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase">Cliente</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase">Tipo</th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-white uppercase">Total</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-white uppercase">Estado</th>
-                  <th className="px-6 py-3 text-center text-xs font-medium text-white uppercase">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {ventas.length === 0 ? (
+        <div className="bg-white rounded-lg shadow overflow-hidden">
+          {loading ? (
+            <div className="px-6 py-12 text-center text-gray-500">
+              Cargando ventas...
+            </div>
+          ) : (
+            <>
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-carpinteria-oscuro">
                   <tr>
-                    <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
-                      No se encontraron ventas
-                    </td>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase">Fecha</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase">ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase">Cliente</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase">Tipo</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-white uppercase">Total</th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-white uppercase">Estado</th>
+                    <th className="px-6 py-3 text-center text-xs font-medium text-white uppercase">Acciones</th>
                   </tr>
-                ) : (
-                  ventas.map((venta) => (
-                    <tr key={venta.id_venta} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {formatearFecha(venta.fecha_venta)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">
-                        #{venta.id_venta?.substring(0, 8)}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-900">
-                        <div>
-                          <p className="font-medium">
-                            {venta.clientes ? `${venta.clientes.nombre} ${venta.clientes.apellido || ''}`.trim() : 'N/A'}
-                          </p>
-                          <p className="text-xs text-gray-500">
-                            Tipo: {venta.clientes?.tipo_cliente || 'N/A'}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                          venta.tipo_venta === 'CONTADO'
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-orange-100 text-orange-800'
-                        }`}>
-                          {venta.tipo_venta}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold text-gray-900">
-                        Q{parseFloat(venta.total || 0).toFixed(2)}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className={`px-3 py-1 text-xs font-semibold rounded-full ${
-                          venta.estado === 'ACTIVA'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {venta.estado}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
-                        <div className="flex items-center justify-center gap-2">
-                          <button
-                            onClick={() => handleVerDetalle(venta)}
-                            className="text-blue-600 hover:text-blue-800 transition-colors"
-                            title="Ver detalle"
-                          >
-                            <Eye className="w-5 h-5" />
-                          </button>
-                          {isAdmin && venta.estado === 'ACTIVA' && (
-                            <button
-                              onClick={() => handleOpenAnularModal(venta)}
-                              className="text-red-600 hover:text-red-800 transition-colors"
-                              title="Anular venta"
-                            >
-                              <X className="w-5 h-5" />
-                            </button>
-                          )}
-                        </div>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {ventas.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                        No se encontraron ventas
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    ventas.map((venta) => (
+                      <tr key={venta.id_venta} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {formatearFecha(venta.fecha_venta)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-mono text-gray-600">
+                          #{venta.id_venta?.substring(0, 8)}
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-900">
+                          <div>
+                            <p className="font-medium">
+                              {venta.clientes ? `${venta.clientes.nombre} ${venta.clientes.apellido || ''}`.trim() : 'N/A'}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              Tipo: {venta.clientes?.tipo_cliente || 'N/A'}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-3 py-1 text-xs font-semibold rounded-full ${venta.tipo_venta === 'CONTADO'
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-orange-100 text-orange-800'
+                            }`}>
+                            {venta.tipo_venta}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold text-gray-900">
+                          Q{parseFloat(venta.total || 0).toFixed(2)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <span className={`px-3 py-1 text-xs font-semibold rounded-full ${venta.estado === 'ACTIVA'
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                            }`}>
+                            {venta.estado}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center text-sm">
+                          <div className="flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => handleVerDetalle(venta)}
+                              className="text-blue-600 hover:text-blue-800 transition-colors"
+                              title="Ver detalle"
+                            >
+                              <Eye className="w-5 h-5" />
+                            </button>
+                            {isAdmin && venta.estado === 'ACTIVA' && (
+                              <button
+                                onClick={() => handleOpenAnularModal(venta)}
+                                className="text-red-600 hover:text-red-800 transition-colors"
+                                title="Anular venta"
+                              >
+                                <X className="w-5 h-5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
 
-            {/* Componente de Paginación */}
-            {ventas.length > 0 && (
-              <Pagination
-                currentPage={currentPage}
-                totalPages={pagination.totalPages}
-                pageSize={pageSize}
-                totalItems={pagination.total}
-                onPageChange={handlePageChange}
-                onPageSizeChange={handlePageSizeChange}
-                hasNextPage={pagination.hasNextPage}
-                hasPrevPage={pagination.hasPrevPage}
-              />
-            )}
-          </>
-        )}
-      </div>
+              {/* Componente de Paginación */}
+              {ventas.length > 0 && (
+                <Pagination
+                  currentPage={currentPage}
+                  totalPages={pagination.totalPages}
+                  pageSize={pageSize}
+                  totalItems={pagination.total}
+                  onPageChange={handlePageChange}
+                  onPageSizeChange={handlePageSizeChange}
+                  hasNextPage={pagination.hasNextPage}
+                  hasPrevPage={pagination.hasPrevPage}
+                />
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Modal de Nueva Venta */}
@@ -1033,576 +1228,568 @@ export default function Ventas() {
               /* Vista de Formulario de Nueva Venta */
               <>
                 <div className="p-6 space-y-6">
-              {/* Sección: Selección de Cliente */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Cliente *
-                </label>
-                {clienteSeleccionado ? (
-                  <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
-                    <div>
-                      <p className="font-semibold text-gray-900">{clienteSeleccionado.nombre} {clienteSeleccionado.apellido || ''}</p>
-                      <p className="text-sm text-gray-600">Teléfono: {clienteSeleccionado.telefono || 'N/A'}</p>
-                      <p className="text-sm text-gray-600">Tipo: {clienteSeleccionado.tipo_cliente}</p>
-                    </div>
-                    <button
-                      onClick={() => setClienteSeleccionado(null)}
-                      className="text-red-600 hover:text-red-800 text-sm font-medium"
-                    >
-                      Cambiar
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <input
-                      type="text"
-                      placeholder="Buscar cliente por nombre o teléfono..."
-                      value={searchCliente}
-                      onChange={(e) => setSearchCliente(e.target.value)}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
-                    />
-                    {searchCliente && clientesFiltrados.length > 0 && (
-                      <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg">
-                        {clientesFiltrados.map((cliente) => (
-                          <button
-                            key={cliente.id}
-                            onClick={() => handleSelectCliente(cliente)}
-                            className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
-                          >
-                            <p className="font-medium text-gray-900">{cliente.nombre} {cliente.apellido || ''}</p>
-                            <p className="text-sm text-gray-600">
-                              Teléfono: {cliente.telefono || 'N/A'} | Tipo: {cliente.tipo_cliente || 'N/A'}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {searchCliente && clientesFiltrados.length === 0 && (
-                      <p className="text-sm text-gray-500 italic">No se encontraron clientes</p>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Sección: Tipo de Venta */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Tipo de Venta *
-                </label>
-                <div className="flex gap-4">
-                  <button
-                    type="button"
-                    onClick={() => handleChangeTipoVenta('CONTADO')}
-                    className={`flex-1 px-6 py-3 rounded-lg border-2 font-medium transition-all ${
-                      formVenta.tipo_venta === 'CONTADO'
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
-                    }`}
-                  >
-                    <div className="flex items-center justify-center gap-2">
-                      <input
-                        type="radio"
-                        checked={formVenta.tipo_venta === 'CONTADO'}
-                        onChange={() => {}}
-                        className="w-4 h-4"
-                      />
-                      <span>CONTADO</span>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleChangeTipoVenta('CREDITO')}
-                    className={`flex-1 px-6 py-3 rounded-lg border-2 font-medium transition-all ${
-                      formVenta.tipo_venta === 'CREDITO'
-                        ? 'border-orange-500 bg-orange-50 text-orange-700'
-                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
-                    }`}
-                  >
-                    <div className="flex items-center justify-center gap-2">
-                      <input
-                        type="radio"
-                        checked={formVenta.tipo_venta === 'CREDITO'}
-                        onChange={() => {}}
-                        className="w-4 h-4"
-                      />
-                      <span>CRÉDITO</span>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Condicional: Método de Pago (solo si CONTADO) */}
-              {formVenta.tipo_venta === 'CONTADO' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Método de Pago *
-                  </label>
-                  <select
-                    value={formVenta.metodo_pago}
-                    onChange={(e) => setFormVenta({ ...formVenta, metodo_pago: e.target.value })}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
-                  >
-                    <option value="EFECTIVO">Efectivo</option>
-                    <option value="TARJETA">Tarjeta</option>
-                    <option value="TRANSFERENCIA">Transferencia</option>
-                  </select>
-                </div>
-              )}
-
-              {/* Condicional: Días de Crédito (solo si CREDITO) */}
-              {formVenta.tipo_venta === 'CREDITO' && (
-                <>
+                  {/* Sección: Selección de Cliente */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Días de Crédito
+                      Cliente *
                     </label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={formVenta.dias_credito}
-                      onChange={(e) => {
-                        const valor = e.target.value
-                        setFormVenta({ ...formVenta, dias_credito: valor === '' ? '' : parseInt(valor) || '' })
-                      }}
-                      onBlur={(e) => {
-                        if (e.target.value === '' || parseInt(e.target.value) < 1) {
-                          setFormVenta({ ...formVenta, dias_credito: 30 })
-                        }
-                      }}
-                      onWheel={(e) => e.target.blur()}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
-                    />
-                    <p className="mt-1 text-sm text-gray-500">Días para el vencimiento del crédito (por defecto 30 días)</p>
-                  </div>
-
-                  {/* Límite de Crédito Disponible */}
-                  {clienteSeleccionado && clienteSeleccionado.tipo_cliente === 'CREDITO' && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h4 className="font-semibold text-blue-900 mb-2">Información de Crédito del Cliente</h4>
-                      <div className="grid grid-cols-2 gap-4 text-sm">
+                    {clienteSeleccionado ? (
+                      <div className="flex items-center justify-between p-4 bg-green-50 border border-green-200 rounded-lg">
                         <div>
-                          <p className="text-gray-600">Límite Total:</p>
-                          <p className="font-bold text-gray-900">
-                            Q{clienteSeleccionado.limite_credito?.toFixed(2) || '0.00'}
-                          </p>
+                          <p className="font-semibold text-gray-900">{clienteSeleccionado.nombre} {clienteSeleccionado.apellido || ''}</p>
+                          <p className="text-sm text-gray-600">Teléfono: {clienteSeleccionado.telefono || 'N/A'}</p>
+                          <p className="text-sm text-gray-600">Tipo: {clienteSeleccionado.tipo_cliente}</p>
                         </div>
-                        <div>
-                          <p className="text-gray-600">Crédito Disponible:</p>
-                          <p className="font-bold text-green-600">
-                            Q{clienteSeleccionado.credito_disponible?.toFixed(2) || '0.00'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Advertencia si el cliente NO es tipo CREDITO */}
-                  {clienteSeleccionado && clienteSeleccionado.tipo_cliente !== 'CREDITO' && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                      <p className="text-red-800 font-medium">
-                        ⚠️ Este cliente NO es tipo CRÉDITO. No podrás crear una venta a crédito.
-                      </p>
-                      <p className="text-red-600 text-sm mt-1">
-                        Por favor, selecciona un cliente tipo CRÉDITO o cambia a venta al CONTADO.
-                      </p>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* Sección: Carrito de Productos */}
-              <div className="border-t border-gray-200 pt-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Productos de la Venta</h3>
-                
-                {/* Búsqueda y selección de productos */}
-                <div className="bg-gray-50 p-4 rounded-lg mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Agregar Producto
-                  </label>
-                  
-                  {productoSeleccionado ? (
-                    <div className="space-y-3">
-                      {/* Producto seleccionado */}
-                      <div className="bg-white p-3 rounded border border-gray-300">
-                        <div className="flex items-center justify-between mb-2">
-                          <div>
-                            <p className="font-semibold text-gray-900">{productoSeleccionado.nombre}</p>
-                            <p className="text-sm text-gray-600">Código: {productoSeleccionado.codigo}</p>
-                          </div>
-                          <button
-                            onClick={() => setProductoSeleccionado(null)}
-                            className="text-red-600 hover:text-red-800 text-sm font-medium"
-                          >
-                            Cambiar
-                          </button>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className={`px-2 py-1 rounded ${
-                            productoSeleccionado.cantidad_stock === 0 
-                              ? 'bg-red-100 text-red-800' 
-                              : productoSeleccionado.cantidad_stock < (productoSeleccionado.stock_minimo || 0)
-                              ? 'bg-yellow-100 text-yellow-800'
-                              : 'bg-green-100 text-green-800'
-                          }`}>
-                            Stock: {productoSeleccionado.cantidad_stock}
-                          </span>
-                          <span className="text-gray-600">
-                            Precio: Q{productoSeleccionado.precio_venta?.toFixed(2) || '0.00'}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Campos de cantidad y precio */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Cantidad *
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            max={productoSeleccionado.cantidad_stock}
-                            value={cantidadProducto}
-                            onChange={(e) => {
-                              const valor = e.target.value
-                              setCantidadProducto(valor === '' ? '' : parseInt(valor) || '')
-                            }}
-                            onBlur={(e) => {
-                              if (e.target.value === '' || parseInt(e.target.value) < 1) {
-                                setCantidadProducto(1)
-                              }
-                            }}
-                            onWheel={(e) => e.target.blur()}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-1">
-                            Precio Unitario *
-                          </label>
-                          <input
-                            type="number"
-                            value={precioProducto}
-                            disabled
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 cursor-not-allowed"
-                            title="El precio se toma automáticamente del producto registrado"
-                          />
-                          <p className="mt-1 text-xs text-gray-500">Precio registrado del producto</p>
-                        </div>
-                      </div>
-
-                      {/* Subtotal y botón agregar */}
-                      <div className="flex items-center justify-between">
-                        <p className="text-lg font-semibold text-gray-900">
-                          Subtotal: Q{(cantidadProducto * precioProducto).toFixed(2)}
-                        </p>
                         <button
-                          onClick={agregarProductoAlCarrito}
-                          className="px-4 py-2 bg-carpinteria-medio text-white rounded-lg hover:bg-carpinteria-rojizo transition-colors"
+                          onClick={() => setClienteSeleccionado(null)}
+                          className="text-red-600 hover:text-red-800 text-sm font-medium"
                         >
-                          Agregar al Carrito
+                          Cambiar
                         </button>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <input
-                        type="text"
-                        placeholder="Buscar producto por nombre o código..."
-                        value={searchProducto}
-                        onChange={(e) => setSearchProducto(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
-                      />
-                      {searchProducto && productosFiltrados.length > 0 && (
-                        <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white">
-                          {productosFiltrados.map((producto) => (
-                            <button
-                              key={producto.id}
-                              onClick={() => handleSelectProducto(producto)}
-                              className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
-                            >
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="font-medium text-gray-900">{producto.nombre}</p>
-                                  <p className="text-sm text-gray-600">
-                                    Código: {producto.codigo} | Precio: Q{producto.precio_venta?.toFixed(2) || '0.00'}
-                                  </p>
-                                </div>
-                                <span className={`px-2 py-1 text-xs rounded ${
-                                  producto.cantidad_stock === 0 
-                                    ? 'bg-red-100 text-red-800' 
-                                    : producto.cantidad_stock < (producto.stock_minimo || 0)
-                                    ? 'bg-yellow-100 text-yellow-800'
-                                    : 'bg-green-100 text-green-800'
-                                }`}>
-                                  Stock: {producto.cantidad_stock}
-                                </span>
-                              </div>
-                            </button>
-                          ))}
+                    ) : (
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          placeholder="Buscar cliente por nombre o teléfono..."
+                          value={searchCliente}
+                          onChange={(e) => setSearchCliente(e.target.value)}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
+                        />
+                        {searchCliente && clientesFiltrados.length > 0 && (
+                          <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg">
+                            {clientesFiltrados.map((cliente) => (
+                              <button
+                                key={cliente.id}
+                                onClick={() => handleSelectCliente(cliente)}
+                                className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                              >
+                                <p className="font-medium text-gray-900">{cliente.nombre} {cliente.apellido || ''}</p>
+                                <p className="text-sm text-gray-600">
+                                  Teléfono: {cliente.telefono || 'N/A'} | Tipo: {cliente.tipo_cliente || 'N/A'}
+                                </p>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {searchCliente && clientesFiltrados.length === 0 && (
+                          <p className="text-sm text-gray-500 italic">No se encontraron clientes</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sección: Tipo de Venta */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Tipo de Venta *
+                    </label>
+                    <div className="flex gap-4">
+                      <button
+                        type="button"
+                        onClick={() => handleChangeTipoVenta('CONTADO')}
+                        className={`flex-1 px-6 py-3 rounded-lg border-2 font-medium transition-all ${formVenta.tipo_venta === 'CONTADO'
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                          }`}
+                      >
+                        <div className="flex items-center justify-center gap-2">
+                          <input
+                            type="radio"
+                            checked={formVenta.tipo_venta === 'CONTADO'}
+                            onChange={() => { }}
+                            className="w-4 h-4"
+                          />
+                          <span>CONTADO</span>
                         </div>
-                      )}
-                      {searchProducto && productosFiltrados.length === 0 && (
-                        <p className="text-sm text-gray-500 italic">No se encontraron productos</p>
-                      )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleChangeTipoVenta('CREDITO')}
+                        className={`flex-1 px-6 py-3 rounded-lg border-2 font-medium transition-all ${formVenta.tipo_venta === 'CREDITO'
+                          ? 'border-orange-500 bg-orange-50 text-orange-700'
+                          : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400'
+                          }`}
+                      >
+                        <div className="flex items-center justify-center gap-2">
+                          <input
+                            type="radio"
+                            checked={formVenta.tipo_venta === 'CREDITO'}
+                            onChange={() => { }}
+                            className="w-4 h-4"
+                          />
+                          <span>CRÉDITO</span>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Condicional: Método de Pago (solo si CONTADO) */}
+                  {formVenta.tipo_venta === 'CONTADO' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Método de Pago *
+                      </label>
+                      <select
+                        value={formVenta.metodo_pago}
+                        onChange={(e) => setFormVenta({ ...formVenta, metodo_pago: e.target.value })}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
+                      >
+                        <option value="EFECTIVO">Efectivo</option>
+                        <option value="TARJETA">Tarjeta</option>
+                        <option value="TRANSFERENCIA">Transferencia</option>
+                      </select>
                     </div>
                   )}
-                </div>
 
-                {/* Tabla del carrito */}
-                {carrito.length > 0 ? (
-                  <div className="overflow-x-auto">
-                    <p className="text-xs text-gray-500 mb-2 italic">
-                      💡 Puedes ajustar el precio unitario en la tabla si necesitas hacer descuentos por producto
-                    </p>
-                    <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg">
-                      <thead className="bg-gray-100">
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Producto</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Cantidad</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">
-                            Precio Unit.
-                            <span className="block text-[10px] font-normal text-gray-500 normal-case">(editable)</span>
-                          </th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Subtotal</th>
-                          <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {carrito.map((item) => (
-                          <tr key={item.id_producto}>
-                            <td className="px-4 py-3">
-                              <p className="font-medium text-gray-900">{item.nombre}</p>
-                              <p className="text-xs text-gray-500">Código: {item.codigo}</p>
-                              <p className="text-xs text-gray-500">Stock disponible: {item.stock_disponible}</p>
-                            </td>
-                            <td className="px-4 py-3 text-center">
+                  {/* Condicional: Días de Crédito (solo si CREDITO) */}
+                  {formVenta.tipo_venta === 'CREDITO' && (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Días de Crédito
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={formVenta.dias_credito}
+                          onChange={(e) => {
+                            const valor = e.target.value
+                            setFormVenta({ ...formVenta, dias_credito: valor === '' ? '' : parseInt(valor) || '' })
+                          }}
+                          onBlur={(e) => {
+                            if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                              setFormVenta({ ...formVenta, dias_credito: 30 })
+                            }
+                          }}
+                          onWheel={(e) => e.target.blur()}
+                          className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
+                        />
+                        <p className="mt-1 text-sm text-gray-500">Días para el vencimiento del crédito (por defecto 30 días)</p>
+                      </div>
+
+                      {/* Límite de Crédito Disponible */}
+                      {clienteSeleccionado && clienteSeleccionado.tipo_cliente === 'CREDITO' && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                          <h4 className="font-semibold text-blue-900 mb-2">Información de Crédito del Cliente</h4>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <p className="text-gray-600">Límite Total:</p>
+                              <p className="font-bold text-gray-900">
+                                Q{clienteSeleccionado.limite_credito?.toFixed(2) || '0.00'}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-gray-600">Crédito Disponible:</p>
+                              <p className="font-bold text-green-600">
+                                Q{clienteSeleccionado.credito_disponible?.toFixed(2) || '0.00'}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Advertencia si el cliente NO es tipo CREDITO */}
+                      {clienteSeleccionado && clienteSeleccionado.tipo_cliente !== 'CREDITO' && (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                          <p className="text-red-800 font-medium">
+                            ⚠️ Este cliente NO es tipo CRÉDITO. No podrás crear una venta a crédito.
+                          </p>
+                          <p className="text-red-600 text-sm mt-1">
+                            Por favor, selecciona un cliente tipo CRÉDITO o cambia a venta al CONTADO.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Sección: Carrito de Productos */}
+                  <div className="border-t border-gray-200 pt-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Productos de la Venta</h3>
+
+                    {/* Búsqueda y selección de productos */}
+                    <div className="bg-gray-50 p-4 rounded-lg mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Agregar Producto
+                      </label>
+
+                      {productoSeleccionado ? (
+                        <div className="space-y-3">
+                          {/* Producto seleccionado */}
+                          <div className="bg-white p-3 rounded border border-gray-300">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <p className="font-semibold text-gray-900">{productoSeleccionado.nombre}</p>
+                                <p className="text-sm text-gray-600">Código: {productoSeleccionado.codigo}</p>
+                              </div>
+                              <button
+                                onClick={() => setProductoSeleccionado(null)}
+                                className="text-red-600 hover:text-red-800 text-sm font-medium"
+                              >
+                                Cambiar
+                              </button>
+                            </div>
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className={`px-2 py-1 rounded ${productoSeleccionado.cantidad_stock === 0
+                                ? 'bg-red-100 text-red-800'
+                                : productoSeleccionado.cantidad_stock < (productoSeleccionado.stock_minimo || 0)
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-green-100 text-green-800'
+                                }`}>
+                                Stock: {productoSeleccionado.cantidad_stock}
+                              </span>
+                              <span className="text-gray-600">
+                                Precio: Q{productoSeleccionado.precio_venta?.toFixed(2) || '0.00'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Campos de cantidad y precio */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Cantidad *
+                              </label>
                               <input
                                 type="number"
                                 min="1"
-                                max={item.stock_disponible}
-                                value={item.cantidad}
+                                max={productoSeleccionado.cantidad_stock}
+                                value={cantidadProducto}
                                 onChange={(e) => {
                                   const valor = e.target.value
-                                  if (valor === '') {
-                                    setCarrito(carrito.map(i => 
-                                      i.id_producto === item.id_producto ? { ...i, cantidad: '' } : i
-                                    ))
-                                  } else {
-                                    actualizarCantidadCarrito(item.id_producto, parseInt(valor) || 1)
-                                  }
+                                  setCantidadProducto(valor === '' ? '' : parseInt(valor) || '')
                                 }}
                                 onBlur={(e) => {
                                   if (e.target.value === '' || parseInt(e.target.value) < 1) {
-                                    actualizarCantidadCarrito(item.id_producto, 1)
+                                    setCantidadProducto(1)
                                   }
                                 }}
                                 onWheel={(e) => e.target.blur()}
-                                className="w-20 px-2 py-1 text-center border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
                               />
-                            </td>
-                            <td className="px-4 py-3 text-center">
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Precio Unitario *
+                              </label>
                               <input
                                 type="number"
-                                min="0"
-                                step="0.01"
-                                value={item.precio_unitario}
-                                onChange={(e) => {
-                                  const valor = e.target.value
-                                  if (valor === '') {
-                                    setCarrito(carrito.map(i => 
-                                      i.id_producto === item.id_producto ? { ...i, precio_unitario: '' } : i
-                                    ))
-                                  } else {
-                                    actualizarPrecioCarrito(item.id_producto, parseFloat(valor) || 0)
-                                  }
-                                }}
-                                onBlur={(e) => {
-                                  if (e.target.value === '' || parseFloat(e.target.value) <= 0) {
-                                    actualizarPrecioCarrito(item.id_producto, item.precio_unitario || 0)
-                                  }
-                                }}
-                                onWheel={(e) => e.target.blur()}
-                                className="w-24 px-2 py-1 text-center border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
+                                value={precioProducto}
+                                disabled
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-700 cursor-not-allowed"
+                                title="El precio se toma automáticamente del producto registrado"
                               />
-                            </td>
-                            <td className="px-4 py-3 text-right font-semibold text-gray-900">
-                              Q{item.subtotal.toFixed(2)}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <button
-                                onClick={() => eliminarDelCarrito(item.id_producto)}
-                                className="text-red-600 hover:text-red-800 transition-colors"
-                                title="Eliminar producto"
-                              >
-                                <Trash2 className="w-5 h-5" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-
-                    {/* Descuentos */}
-                    <div className="mt-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
-                      <h4 className="text-sm font-semibold text-gray-700 mb-3">Descuento</h4>
-                      
-                      {/* Selector de tipo de descuento */}
-                      <div className="grid grid-cols-3 gap-2 mb-4">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDescuentoTipo('NINGUNO')
-                            setDescuentoValor(0)
-                          }}
-                          className={`px-4 py-2 rounded-lg border-2 font-medium transition-all ${
-                            descuentoTipo === 'NINGUNO'
-                              ? 'border-gray-500 bg-gray-100 text-gray-800'
-                              : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
-                          }`}
-                        >
-                          Sin Descuento
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDescuentoTipo('PORCENTAJE')
-                            setDescuentoValor(0)
-                          }}
-                          className={`px-4 py-2 rounded-lg border-2 font-medium transition-all ${
-                            descuentoTipo === 'PORCENTAJE'
-                              ? 'border-blue-500 bg-blue-50 text-blue-700'
-                              : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
-                          }`}
-                        >
-                          Porcentaje %
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDescuentoTipo('MONTO')
-                            setDescuentoValor(0)
-                          }}
-                          className={`px-4 py-2 rounded-lg border-2 font-medium transition-all ${
-                            descuentoTipo === 'MONTO'
-                              ? 'border-green-500 bg-green-50 text-green-700'
-                              : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
-                          }`}
-                        >
-                          Monto Fijo Q
-                        </button>
-                      </div>
-
-                      {/* Input de valor de descuento */}
-                      {descuentoTipo !== 'NINGUNO' && (
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
-                            {descuentoTipo === 'PORCENTAJE' ? 'Porcentaje de descuento' : 'Monto del descuento'}
-                          </label>
-                          <div className="relative">
-                            <input
-                              type="number"
-                              min="0"
-                              max={descuentoTipo === 'PORCENTAJE' ? '100' : calcularTotalVenta()}
-                              step={descuentoTipo === 'PORCENTAJE' ? '1' : '0.01'}
-                              value={descuentoValor}
-                              onChange={(e) => {
-                                const valor = e.target.value
-                                if (valor === '') {
-                                  setDescuentoValor('')
-                                  return
-                                }
-                                const numValor = parseFloat(valor)
-                                if (descuentoTipo === 'PORCENTAJE' && numValor <= 100) {
-                                  setDescuentoValor(numValor)
-                                } else if (descuentoTipo === 'MONTO' && numValor <= calcularTotalVenta()) {
-                                  setDescuentoValor(numValor)
-                                }
-                              }}
-                              onBlur={(e) => {
-                                if (e.target.value === '' || parseFloat(e.target.value) < 0) {
-                                  setDescuentoValor(0)
-                                }
-                              }}
-                              onWheel={(e) => e.target.blur()}
-                              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio pr-12"
-                              placeholder="0"
-                            />
-                            <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-medium">
-                              {descuentoTipo === 'PORCENTAJE' ? '%' : 'Q'}
-                            </span>
+                              <p className="mt-1 text-xs text-gray-500">Precio registrado del producto</p>
+                            </div>
                           </div>
-                          {descuentoTipo === 'PORCENTAJE' && descuentoValor > 0 && (
-                            <p className="mt-1 text-sm text-blue-600">
-                              Descuento: Q{calcularDescuento().toFixed(2)}
+
+                          {/* Subtotal y botón agregar */}
+                          <div className="flex items-center justify-between">
+                            <p className="text-lg font-semibold text-gray-900">
+                              Subtotal: Q{(cantidadProducto * precioProducto).toFixed(2)}
                             </p>
+                            <button
+                              onClick={agregarProductoAlCarrito}
+                              className="px-4 py-2 bg-carpinteria-medio text-white rounded-lg hover:bg-carpinteria-rojizo transition-colors"
+                            >
+                              Agregar al Carrito
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            placeholder="Buscar producto por nombre o código..."
+                            value={searchProducto}
+                            onChange={(e) => setSearchProducto(e.target.value)}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
+                          />
+                          {searchProducto && productosFiltrados.length > 0 && (
+                            <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-lg bg-white">
+                              {productosFiltrados.map((producto) => (
+                                <button
+                                  key={producto.id}
+                                  onClick={() => handleSelectProducto(producto)}
+                                  className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <p className="font-medium text-gray-900">{producto.nombre}</p>
+                                      <p className="text-sm text-gray-600">
+                                        Código: {producto.codigo} | Precio: Q{producto.precio_venta?.toFixed(2) || '0.00'}
+                                      </p>
+                                    </div>
+                                    <span className={`px-2 py-1 text-xs rounded ${producto.cantidad_stock === 0
+                                      ? 'bg-red-100 text-red-800'
+                                      : producto.cantidad_stock < (producto.stock_minimo || 0)
+                                        ? 'bg-yellow-100 text-yellow-800'
+                                        : 'bg-green-100 text-green-800'
+                                      }`}>
+                                      Stock: {producto.cantidad_stock}
+                                    </span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
                           )}
-                          {descuentoTipo === 'MONTO' && descuentoValor > calcularTotalVenta() && (
-                            <p className="mt-1 text-sm text-red-600">
-                              El descuento no puede ser mayor al subtotal
-                            </p>
+                          {searchProducto && productosFiltrados.length === 0 && (
+                            <p className="text-sm text-gray-500 italic">No se encontraron productos</p>
                           )}
                         </div>
                       )}
                     </div>
 
-                    {/* Resumen de totales */}
-                    <div className="mt-4 space-y-2">
-                      {/* Subtotal */}
-                      <div className="flex items-center justify-between text-gray-700 px-4">
-                        <span className="font-medium">Subtotal:</span>
-                        <span className="font-semibold">Q{calcularTotalVenta().toFixed(2)}</span>
-                      </div>
+                    {/* Tabla del carrito */}
+                    {carrito.length > 0 ? (
+                      <div className="overflow-x-auto">
+                        <p className="text-xs text-gray-500 mb-2 italic">
+                          💡 Puedes ajustar el precio unitario en la tabla si necesitas hacer descuentos por producto
+                        </p>
+                        <table className="min-w-full divide-y divide-gray-200 border border-gray-200 rounded-lg">
+                          <thead className="bg-gray-100">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase">Producto</th>
+                              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Cantidad</th>
+                              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">
+                                Precio Unit.
+                                <span className="block text-[10px] font-normal text-gray-500 normal-case">(editable)</span>
+                              </th>
+                              <th className="px-4 py-3 text-right text-xs font-medium text-gray-700 uppercase">Subtotal</th>
+                              <th className="px-4 py-3 text-center text-xs font-medium text-gray-700 uppercase">Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {carrito.map((item) => (
+                              <tr key={item.id_producto}>
+                                <td className="px-4 py-3">
+                                  <p className="font-medium text-gray-900">{item.nombre}</p>
+                                  <p className="text-xs text-gray-500">Código: {item.codigo}</p>
+                                  <p className="text-xs text-gray-500">Stock disponible: {item.stock_disponible}</p>
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    max={item.stock_disponible}
+                                    value={item.cantidad}
+                                    onChange={(e) => {
+                                      const valor = e.target.value
+                                      if (valor === '') {
+                                        setCarrito(carrito.map(i =>
+                                          i.id_producto === item.id_producto ? { ...i, cantidad: '' } : i
+                                        ))
+                                      } else {
+                                        actualizarCantidadCarrito(item.id_producto, parseInt(valor) || 1)
+                                      }
+                                    }}
+                                    onBlur={(e) => {
+                                      if (e.target.value === '' || parseInt(e.target.value) < 1) {
+                                        actualizarCantidadCarrito(item.id_producto, 1)
+                                      }
+                                    }}
+                                    onWheel={(e) => e.target.blur()}
+                                    className="w-20 px-2 py-1 text-center border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
+                                  />
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={item.precio_unitario}
+                                    onChange={(e) => {
+                                      const valor = e.target.value
+                                      if (valor === '') {
+                                        setCarrito(carrito.map(i =>
+                                          i.id_producto === item.id_producto ? { ...i, precio_unitario: '' } : i
+                                        ))
+                                      } else {
+                                        actualizarPrecioCarrito(item.id_producto, parseFloat(valor) || 0)
+                                      }
+                                    }}
+                                    onBlur={(e) => {
+                                      if (e.target.value === '' || parseFloat(e.target.value) <= 0) {
+                                        actualizarPrecioCarrito(item.id_producto, item.precio_unitario || 0)
+                                      }
+                                    }}
+                                    onWheel={(e) => e.target.blur()}
+                                    className="w-24 px-2 py-1 text-center border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
+                                  />
+                                </td>
+                                <td className="px-4 py-3 text-right font-semibold text-gray-900">
+                                  Q{item.subtotal.toFixed(2)}
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <button
+                                    onClick={() => eliminarDelCarrito(item.id_producto)}
+                                    className="text-red-600 hover:text-red-800 transition-colors"
+                                    title="Eliminar producto"
+                                  >
+                                    <Trash2 className="w-5 h-5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
 
-                      {/* Descuento (si aplica) */}
-                      {descuentoTipo !== 'NINGUNO' && descuentoValor > 0 && (
-                        <div className="flex items-center justify-between text-red-600 px-4">
-                          <span className="font-medium">
-                            Descuento {descuentoTipo === 'PORCENTAJE' ? `(${descuentoValor}%)` : ''}:
-                          </span>
-                          <span className="font-semibold">-Q{calcularDescuento().toFixed(2)}</span>
+                        {/* Descuentos */}
+                        <div className="mt-6 bg-gray-50 p-4 rounded-lg border border-gray-200">
+                          <h4 className="text-sm font-semibold text-gray-700 mb-3">Descuento</h4>
+
+                          {/* Selector de tipo de descuento */}
+                          <div className="grid grid-cols-3 gap-2 mb-4">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDescuentoTipo('NINGUNO')
+                                setDescuentoValor(0)
+                              }}
+                              className={`px-4 py-2 rounded-lg border-2 font-medium transition-all ${descuentoTipo === 'NINGUNO'
+                                ? 'border-gray-500 bg-gray-100 text-gray-800'
+                                : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
+                                }`}
+                            >
+                              Sin Descuento
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDescuentoTipo('PORCENTAJE')
+                                setDescuentoValor(0)
+                              }}
+                              className={`px-4 py-2 rounded-lg border-2 font-medium transition-all ${descuentoTipo === 'PORCENTAJE'
+                                ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
+                                }`}
+                            >
+                              Porcentaje %
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDescuentoTipo('MONTO')
+                                setDescuentoValor(0)
+                              }}
+                              className={`px-4 py-2 rounded-lg border-2 font-medium transition-all ${descuentoTipo === 'MONTO'
+                                ? 'border-green-500 bg-green-50 text-green-700'
+                                : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
+                                }`}
+                            >
+                              Monto Fijo Q
+                            </button>
+                          </div>
+
+                          {/* Input de valor de descuento */}
+                          {descuentoTipo !== 'NINGUNO' && (
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                {descuentoTipo === 'PORCENTAJE' ? 'Porcentaje de descuento' : 'Monto del descuento'}
+                              </label>
+                              <div className="relative">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max={descuentoTipo === 'PORCENTAJE' ? '100' : calcularTotalVenta()}
+                                  step={descuentoTipo === 'PORCENTAJE' ? '1' : '0.01'}
+                                  value={descuentoValor}
+                                  onChange={(e) => {
+                                    const valor = e.target.value
+                                    if (valor === '') {
+                                      setDescuentoValor('')
+                                      return
+                                    }
+                                    const numValor = parseFloat(valor)
+                                    if (descuentoTipo === 'PORCENTAJE' && numValor <= 100) {
+                                      setDescuentoValor(numValor)
+                                    } else if (descuentoTipo === 'MONTO' && numValor <= calcularTotalVenta()) {
+                                      setDescuentoValor(numValor)
+                                    }
+                                  }}
+                                  onBlur={(e) => {
+                                    if (e.target.value === '' || parseFloat(e.target.value) < 0) {
+                                      setDescuentoValor(0)
+                                    }
+                                  }}
+                                  onWheel={(e) => e.target.blur()}
+                                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio pr-12"
+                                  placeholder="0"
+                                />
+                                <span className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-medium">
+                                  {descuentoTipo === 'PORCENTAJE' ? '%' : 'Q'}
+                                </span>
+                              </div>
+                              {descuentoTipo === 'PORCENTAJE' && descuentoValor > 0 && (
+                                <p className="mt-1 text-sm text-blue-600">
+                                  Descuento: Q{calcularDescuento().toFixed(2)}
+                                </p>
+                              )}
+                              {descuentoTipo === 'MONTO' && descuentoValor > calcularTotalVenta() && (
+                                <p className="mt-1 text-sm text-red-600">
+                                  El descuento no puede ser mayor al subtotal
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
-                      )}
 
-                      {/* Total Final */}
-                      <div className="bg-carpinteria-oscuro text-white p-4 rounded-lg">
-                        <div className="flex items-center justify-between">
-                          <span className="text-lg font-semibold">TOTAL A PAGAR:</span>
-                          <span className="text-2xl font-bold">Q{calcularTotalConDescuento().toFixed(2)}</span>
+                        {/* Resumen de totales */}
+                        <div className="mt-4 space-y-2">
+                          {/* Subtotal */}
+                          <div className="flex items-center justify-between text-gray-700 px-4">
+                            <span className="font-medium">Subtotal:</span>
+                            <span className="font-semibold">Q{calcularTotalVenta().toFixed(2)}</span>
+                          </div>
+
+                          {/* Descuento (si aplica) */}
+                          {descuentoTipo !== 'NINGUNO' && descuentoValor > 0 && (
+                            <div className="flex items-center justify-between text-red-600 px-4">
+                              <span className="font-medium">
+                                Descuento {descuentoTipo === 'PORCENTAJE' ? `(${descuentoValor}%)` : ''}:
+                              </span>
+                              <span className="font-semibold">-Q{calcularDescuento().toFixed(2)}</span>
+                            </div>
+                          )}
+
+                          {/* Total Final */}
+                          <div className="bg-carpinteria-oscuro text-white p-4 rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <span className="text-lg font-semibold">TOTAL A PAGAR:</span>
+                              <span className="text-2xl font-bold">Q{calcularTotalConDescuento().toFixed(2)}</span>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                        <p className="text-gray-500">No hay productos en el carrito</p>
+                        <p className="text-sm text-gray-400 mt-1">Busca y agrega productos para crear la venta</p>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="text-center py-8 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
-                    <p className="text-gray-500">No hay productos en el carrito</p>
-                    <p className="text-sm text-gray-400 mt-1">Busca y agrega productos para crear la venta</p>
-                  </div>
-                )}
-              </div>
-            </div>
+                </div>
 
-            {/* Footer del Modal */}
-            <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
-              <button
-                onClick={handleCloseModal}
-                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
-                disabled={loading}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleSubmitVenta}
-                disabled={loading || !clienteSeleccionado || carrito.length === 0}
-                className={`px-6 py-2 rounded-lg transition-colors ${
-                  loading || !clienteSeleccionado || carrito.length === 0
-                    ? 'bg-gray-400 text-white cursor-not-allowed'
-                    : 'bg-carpinteria-medio text-white hover:bg-carpinteria-rojizo'
-                }`}
-              >
-                {loading ? 'Procesando...' : 'Guardar Venta'}
-              </button>
-            </div>
+                {/* Footer del Modal */}
+                <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
+                  <button
+                    onClick={handleCloseModal}
+                    className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                    disabled={loading}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleSubmitVenta}
+                    disabled={loading || !clienteSeleccionado || carrito.length === 0}
+                    className={`px-6 py-2 rounded-lg transition-colors ${loading || !clienteSeleccionado || carrito.length === 0
+                      ? 'bg-gray-400 text-white cursor-not-allowed'
+                      : 'bg-carpinteria-medio text-white hover:bg-carpinteria-rojizo'
+                      }`}
+                  >
+                    {loading ? 'Procesando...' : 'Guardar Venta'}
+                  </button>
+                </div>
               </>
             )}
           </div>
@@ -1660,11 +1847,10 @@ export default function Ventas() {
                   </div>
                   <div>
                     <p className="text-sm text-gray-600 font-medium">Tipo</p>
-                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${
-                      ventaDetalle.clientes?.tipo_cliente === 'CREDITO'
-                        ? 'bg-orange-100 text-orange-800'
-                        : 'bg-green-100 text-green-800'
-                    }`}>
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${ventaDetalle.clientes?.tipo_cliente === 'CREDITO'
+                      ? 'bg-orange-100 text-orange-800'
+                      : 'bg-green-100 text-green-800'
+                      }`}>
                       {ventaDetalle.clientes?.tipo_cliente || 'N/A'}
                     </span>
                   </div>
@@ -1747,11 +1933,10 @@ export default function Ventas() {
                 <div className="border-t border-white/30 pt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <p className="text-sm text-white/80 font-medium">Tipo de Venta</p>
-                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mt-1 ${
-                      ventaDetalle.tipo_venta === 'CREDITO'
-                        ? 'bg-orange-100 text-orange-800'
-                        : 'bg-green-100 text-green-800'
-                    }`}>
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mt-1 ${ventaDetalle.tipo_venta === 'CREDITO'
+                      ? 'bg-orange-100 text-orange-800'
+                      : 'bg-green-100 text-green-800'
+                      }`}>
                       {ventaDetalle.tipo_venta}
                     </span>
                   </div>
@@ -1778,11 +1963,10 @@ export default function Ventas() {
                 {/* Estado de la Venta */}
                 <div className="border-t border-white/30 pt-4 mt-4">
                   <p className="text-sm text-white/80 font-medium">Estado</p>
-                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mt-1 ${
-                    ventaDetalle.estado === 'ACTIVA'
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-red-100 text-red-800'
-                  }`}>
+                  <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mt-1 ${ventaDetalle.estado === 'ACTIVA'
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-red-100 text-red-800'
+                    }`}>
                     {ventaDetalle.estado}
                   </span>
                 </div>
@@ -1881,11 +2065,10 @@ export default function Ventas() {
               <button
                 onClick={handleAnularVenta}
                 disabled={loading || !motivoAnulacion.trim()}
-                className={`px-6 py-2 rounded-lg transition-colors font-semibold ${
-                  loading || !motivoAnulacion.trim()
-                    ? 'bg-gray-400 text-white cursor-not-allowed'
-                    : 'bg-red-600 text-white hover:bg-red-700'
-                }`}
+                className={`px-6 py-2 rounded-lg transition-colors font-semibold ${loading || !motivoAnulacion.trim()
+                  ? 'bg-gray-400 text-white cursor-not-allowed'
+                  : 'bg-red-600 text-white hover:bg-red-700'
+                  }`}
               >
                 {loading ? 'Anulando...' : 'Confirmar Anulación'}
               </button>
