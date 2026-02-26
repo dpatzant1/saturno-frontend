@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Package, Users, ShoppingCart, CreditCard, TrendingUp, TrendingDown, AlertCircle, AlertTriangle, CheckCircle2, Activity } from 'lucide-react'
+import { Package, Users, ShoppingCart, CreditCard, TrendingUp, TrendingDown, AlertCircle, AlertTriangle, CheckCircle2, Activity, Calendar } from 'lucide-react'
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ComposedChart
 } from 'recharts'
 import {
   getDashboardStats,
@@ -16,7 +16,8 @@ import {
   getVentas,
   getCreditos,
   getMovimientos,
-  getVentasDelDia
+  getVentasDelDia,
+  getHistorialMensualVentas
 } from '../services/api'
 
 export default function Dashboard() {
@@ -51,6 +52,8 @@ export default function Dashboard() {
     productosMasVendidos: [],
     tiposVenta: []
   })
+  const [historialMensual, setHistorialMensual] = useState([])
+  const [mesesHistorial, setMesesHistorial] = useState(12)
 
   // Cargar datos del dashboard
   useEffect(() => {
@@ -126,6 +129,17 @@ export default function Dashboard() {
 
       const ventasDelDia = await getVentasDelDia()
       console.log('📊 Ventas del día cargadas:', ventasDelDia)
+
+      // Cargar historial mensual
+      await new Promise(resolve => setTimeout(resolve, 100))
+      try {
+        const historial = await getHistorialMensualVentas(mesesHistorial)
+        setHistorialMensual(Array.isArray(historial) ? historial : [])
+        console.log('📅 Historial mensual cargado:', historial?.length, 'meses')
+      } catch (err) {
+        console.warn('⚠️ No se pudo cargar el historial mensual:', err.message)
+        setHistorialMensual([])
+      }
 
       // Actualizar estados
       setStats({
@@ -552,6 +566,147 @@ export default function Dashboard() {
             </ResponsiveContainer>
           </div>
         </div>
+      </div>
+
+      {/* Historial de ventas por mes */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+            <Calendar className="w-5 h-5 mr-2 text-indigo-500" />
+            Historial de Ventas por Mes
+          </h3>
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-500">Mostrar:</label>
+            <select
+              value={mesesHistorial}
+              onChange={(e) => {
+                const val = Number(e.target.value)
+                setMesesHistorial(val)
+                getHistorialMensualVentas(val)
+                  .then(data => setHistorialMensual(Array.isArray(data) ? data : []))
+                  .catch(() => {})
+              }}
+              className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+            >
+              <option value={6}>Últimos 6 meses</option>
+              <option value={12}>Últimos 12 meses</option>
+              <option value={18}>Últimos 18 meses</option>
+              <option value={24}>Últimos 24 meses</option>
+            </select>
+          </div>
+        </div>
+
+        {historialMensual.length > 0 ? (
+          <>
+            {/* Resumen del historial */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+              <div className="bg-indigo-50 p-3 rounded-lg text-center">
+                <p className="text-xs text-indigo-600 font-medium">Mejor mes</p>
+                <p className="text-sm font-bold text-indigo-900">
+                  {historialMensual.reduce((max, m) => m.total > max.total ? m : max, historialMensual[0])?.etiqueta}
+                </p>
+                <p className="text-xs text-indigo-700">
+                  {formatCurrency(historialMensual.reduce((max, m) => m.total > max.total ? m : max, historialMensual[0])?.total)}
+                </p>
+              </div>
+              <div className="bg-green-50 p-3 rounded-lg text-center">
+                <p className="text-xs text-green-600 font-medium">Promedio mensual</p>
+                <p className="text-sm font-bold text-green-900">
+                  {formatCurrency(historialMensual.reduce((s, m) => s + m.total, 0) / historialMensual.length)}
+                </p>
+                <p className="text-xs text-green-700">{mesesHistorial} meses</p>
+              </div>
+              <div className="bg-blue-50 p-3 rounded-lg text-center">
+                <p className="text-xs text-blue-600 font-medium">Total acumulado</p>
+                <p className="text-sm font-bold text-blue-900">
+                  {formatCurrency(historialMensual.reduce((s, m) => s + m.total, 0))}
+                </p>
+                <p className="text-xs text-blue-700">{historialMensual.reduce((s, m) => s + m.cantidad, 0)} ventas</p>
+              </div>
+              <div className="bg-purple-50 p-3 rounded-lg text-center">
+                <p className="text-xs text-purple-600 font-medium">Mes actual</p>
+                <p className="text-sm font-bold text-purple-900">
+                  {formatCurrency(historialMensual[historialMensual.length - 1]?.total)}
+                </p>
+                <p className="text-xs text-purple-700">{historialMensual[historialMensual.length - 1]?.cantidad} ventas</p>
+              </div>
+            </div>
+
+            {/* Gráfico de barras mensual */}
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={historialMensual} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="etiqueta"
+                    tick={{ fontSize: 11, fill: '#6B7280' }}
+                    angle={mesesHistorial > 12 ? -30 : 0}
+                    textAnchor={mesesHistorial > 12 ? 'end' : 'middle'}
+                    height={mesesHistorial > 12 ? 50 : 30}
+                  />
+                  <YAxis
+                    yAxisId="monto"
+                    orientation="left"
+                    tickFormatter={(v) => `Q${(v / 1000).toFixed(0)}k`}
+                    tick={{ fontSize: 11, fill: '#6B7280' }}
+                  />
+                  <YAxis
+                    yAxisId="cantidad"
+                    orientation="right"
+                    tickFormatter={(v) => `${v}`}
+                    tick={{ fontSize: 11, fill: '#9CA3AF' }}
+                  />
+                  <Tooltip
+                    formatter={(value, name) => {
+                      if (name === 'Monto Total') return [formatCurrency(value), name]
+                      if (name === 'Contado') return [formatCurrency(value), name]
+                      if (name === 'Crédito') return [formatCurrency(value), name]
+                      return [`${value} ventas`, name]
+                    }}
+                    contentStyle={{ backgroundColor: '#1F2937', border: 'none', borderRadius: '8px', color: 'white', fontSize: '12px' }}
+                  />
+                  <Legend />
+                  <Bar yAxisId="monto" dataKey="monto_contado" name="Contado" stackId="monto" fill="#3B82F6" radius={[0,0,0,0]} />
+                  <Bar yAxisId="monto" dataKey="monto_credito" name="Crédito" stackId="monto" fill="#F59E0B" radius={[4,4,0,0]} />
+                  <Line yAxisId="cantidad" type="monotone" dataKey="cantidad" name="N° Ventas" stroke="#10B981" strokeWidth={2} dot={{ r: 3 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Tabla de detalle compacta */}
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Mes</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Total</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Ventas</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Contado</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Crédito</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {[...historialMensual].reverse().map((mes) => (
+                    <tr key={mes.key} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 font-medium text-gray-800">{mes.etiqueta}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-indigo-700">{formatCurrency(mes.total)}</td>
+                      <td className="px-3 py-2 text-right text-gray-600">{mes.cantidad}</td>
+                      <td className="px-3 py-2 text-right text-blue-600">{formatCurrency(mes.monto_contado)} ({mes.contado})</td>
+                      <td className="px-3 py-2 text-right text-amber-600">{formatCurrency(mes.monto_credito)} ({mes.credito})</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center justify-center h-48 text-gray-400">
+            <div className="text-center">
+              <Calendar className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+              <p>No hay datos de ventas históricas</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Gráfico de tipos de venta */}

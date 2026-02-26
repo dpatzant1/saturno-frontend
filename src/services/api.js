@@ -621,6 +621,17 @@ export const getReporteVentas = async (fechaDesde, fechaHasta) => {
   }
 }
 
+export const getHistorialMensualVentas = async (meses = 12) => {
+  try {
+    const response = await api.get('/ventas/dashboard/historial-mensual', {
+      params: { meses }
+    })
+    return extraerDatos(response)
+  } catch (error) {
+    throw new Error(error.response?.data?.mensaje || error.response?.data?.message || 'Error al obtener historial mensual de ventas')
+  }
+}
+
 // ============== CREDITOS ==============
 export const getCreditos = async (params = {}) => {
   try {
