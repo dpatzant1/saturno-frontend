@@ -16,9 +16,9 @@ import {
   getVentas,
   getCreditos,
   getMovimientos,
-  getVentasDelDia,
-  getHistorialMensualVentas
+  getVentasDelDia
 } from '../services/api'
+import ModalProductosAlerta from '../components/ModalProductosAlerta'
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true)
@@ -52,8 +52,11 @@ export default function Dashboard() {
     productosMasVendidos: [],
     tiposVenta: []
   })
+  const [ventasDashboard, setVentasDashboard] = useState([])
   const [historialMensual, setHistorialMensual] = useState([])
   const [mesesHistorial, setMesesHistorial] = useState(12)
+  const [modalAbierto, setModalAbierto] = useState(false)
+  const [tipoModal, setTipoModal] = useState(null)
 
   // Cargar datos del dashboard
   useEffect(() => {
@@ -83,6 +86,7 @@ export default function Dashboard() {
 
       const ventasRes = await getVentas({ limit: 10000 })
       const ventas = ventasRes.datos || ventasRes || []
+      setVentasDashboard(ventas)
       console.log('✅ Ventas cargadas:', ventas.length)
 
       await new Promise(resolve => setTimeout(resolve, 100))
@@ -98,14 +102,32 @@ export default function Dashboard() {
       const productosActivos = productos.filter(p => p.estado).length
       const clientesActivos = clientes.filter(c => c.estado).length
 
-      // Ventas del mes actual
+      // Ventas del mes actual y mes anterior (usando clave YYYY-MM para evitar problemas de zona horaria)
       const hoy = new Date()
-      const inicioMesActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+      const claveMesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`
+      const fechaMesAnterior = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1)
+      const claveMesAnterior = `${fechaMesAnterior.getFullYear()}-${String(fechaMesAnterior.getMonth() + 1).padStart(2, '0')}`
+
+      const obtenerClaveMesVenta = (venta) => {
+        const fechaFuente = venta.fecha_venta || venta.created_at
+        if (!fechaFuente) return null
+        return String(fechaFuente).split('T')[0].slice(0, 7)
+      }
+
       const ventasDelMesActual = ventas.filter(v => {
-        const fechaVenta = new Date(v.fecha_venta || v.created_at)
-        return fechaVenta >= inicioMesActual && v.estado === 'ACTIVA'
+        const clave = obtenerClaveMesVenta(v)
+        return clave === claveMesActual && v.estado === 'ACTIVA'
       })
       const totalVentasMesActual = ventasDelMesActual.reduce((sum, v) => sum + Number(v.total), 0)
+
+      const ventasDelMesAnterior = ventas.filter(v => {
+        const clave = obtenerClaveMesVenta(v)
+        return clave === claveMesAnterior && v.estado === 'ACTIVA'
+      })
+      const totalVentasMesAnterior = ventasDelMesAnterior.reduce((sum, v) => sum + Number(v.total), 0)
+      const cambioVentas = totalVentasMesAnterior > 0
+        ? Number((((totalVentasMesActual - totalVentasMesAnterior) / totalVentasMesAnterior) * 100).toFixed(2))
+        : (totalVentasMesActual > 0 ? 100 : 0)
 
       // Créditos pendientes
       const creditosPendientes = creditos.filter(c => c.estado === 'ACTIVO' || c.estado === 'VENCIDO')
@@ -130,16 +152,10 @@ export default function Dashboard() {
       const ventasDelDia = await getVentasDelDia()
       console.log('📊 Ventas del día cargadas:', ventasDelDia)
 
-      // Cargar historial mensual
-      await new Promise(resolve => setTimeout(resolve, 100))
-      try {
-        const historial = await getHistorialMensualVentas(mesesHistorial)
-        setHistorialMensual(Array.isArray(historial) ? historial : [])
-        console.log('📅 Historial mensual cargado:', historial?.length, 'meses')
-      } catch (err) {
-        console.warn('⚠️ No se pudo cargar el historial mensual:', err.message)
-        setHistorialMensual([])
-      }
+      // Construir historial mensual desde las mismas ventas del dashboard
+      const historialLocal = procesarHistorialMensual(ventas, mesesHistorial)
+      setHistorialMensual(historialLocal)
+      console.log('📅 Historial mensual calculado localmente:', historialLocal.length, 'meses')
 
       // Actualizar estados
       setStats({
@@ -148,11 +164,12 @@ export default function Dashboard() {
         ventasMes: totalVentasMesActual,
         creditosPendientes: totalCreditosPendientes,
         ventasDelMes: ventasDelMesActual.length,
-        // Porcentajes de cambio (simplificados por ahora)
-        cambioVentas: 0,
+        cambioVentas,
         cambioProductos: 0,
         cambioClientes: 0,
         cambioCreditos: 0,
+        ventasMesAnterior: totalVentasMesAnterior,
+        ventasDelMesAnterior: ventasDelMesAnterior.length,
         // Datos del día
         ventasDelDia: ventasDelDia.ventas_activas || 0,
         montoVentasDelDia: ventasDelDia.monto_total || 0,
@@ -214,6 +231,8 @@ export default function Dashboard() {
         cambioProductos: 0,
         cambioClientes: 0,
         cambioCreditos: 0,
+        ventasMesAnterior: 0,
+        ventasDelMesAnterior: 0,
         // Datos del día vacíos en caso de error
         ventasDelDia: 0,
         montoVentasDelDia: 0,
@@ -257,6 +276,72 @@ export default function Dashboard() {
       return Object.values(ventasPorDia).sort((a, b) => a.fecha.localeCompare(b.fecha))
     } catch (error) {
       console.error('Error procesando ventas por día:', error)
+      return []
+    }
+  }
+
+  const procesarHistorialMensual = (ventas, meses = 12) => {
+    try {
+      const hoy = new Date()
+      const nombresMeses = [
+        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+      ]
+
+      const historial = {}
+      for (let i = 0; i < meses; i++) {
+        const fecha = new Date(hoy.getFullYear(), hoy.getMonth() - (meses - 1) + i, 1)
+        const anio = fecha.getFullYear()
+        const mes = fecha.getMonth() + 1
+        const key = `${anio}-${String(mes).padStart(2, '0')}`
+
+        historial[key] = {
+          key,
+          anio,
+          mes,
+          nombre_mes: nombresMeses[mes - 1],
+          etiqueta: `${nombresMeses[mes - 1].substring(0, 3)} ${anio}`,
+          total: 0,
+          cantidad: 0,
+          contado: 0,
+          credito: 0,
+          monto_contado: 0,
+          monto_credito: 0
+        }
+      }
+
+      ventas
+        .filter(v => v.estado === 'ACTIVA')
+        .forEach(venta => {
+          const fechaFuente = venta.fecha_venta || venta.created_at
+          if (!fechaFuente) return
+
+          const fechaVenta = String(fechaFuente).split('T')[0]
+          const key = fechaVenta.slice(0, 7)
+          const monto = Number(venta.total) || 0
+
+          if (!historial[key]) return
+
+          historial[key].total += monto
+          historial[key].cantidad += 1
+
+          if (venta.tipo_venta === 'CONTADO') {
+            historial[key].contado += 1
+            historial[key].monto_contado += monto
+          } else if (venta.tipo_venta === 'CREDITO') {
+            historial[key].credito += 1
+            historial[key].monto_credito += monto
+          }
+        })
+
+      return Object.values(historial).map(m => ({
+        ...m,
+        total: Number(m.total.toFixed(2)),
+        monto_contado: Number(m.monto_contado.toFixed(2)),
+        monto_credito: Number(m.monto_credito.toFixed(2))
+      }))
+    } catch (error) {
+      console.error('Error procesando historial mensual:', error)
       return []
     }
   }
@@ -347,6 +432,7 @@ export default function Dashboard() {
   }
 
   return (
+    <>
     <div className="space-y-6">
       {/* Header */}
       <div>
@@ -435,6 +521,15 @@ export default function Dashboard() {
                     </div>
                   )}
                 </div>
+                <button
+                  onClick={() => {
+                    setTipoModal('sin')
+                    setModalAbierto(true)
+                  }}
+                  className="mt-3 px-4 py-2 bg-red-600 text-white text-sm font-medium rounded hover:bg-red-700 transition-colors"
+                >
+                  Ver más
+                </button>
               </div>
             </div>
           )}
@@ -459,6 +554,15 @@ export default function Dashboard() {
                     </div>
                   )}
                 </div>
+                <button
+                  onClick={() => {
+                    setTipoModal('bajo')
+                    setModalAbierto(true)
+                  }}
+                  className="mt-3 px-4 py-2 bg-yellow-600 text-white text-sm font-medium rounded hover:bg-yellow-700 transition-colors"
+                >
+                  Ver más
+                </button>
               </div>
             </div>
           )}
@@ -582,9 +686,7 @@ export default function Dashboard() {
               onChange={(e) => {
                 const val = Number(e.target.value)
                 setMesesHistorial(val)
-                getHistorialMensualVentas(val)
-                  .then(data => setHistorialMensual(Array.isArray(data) ? data : []))
-                  .catch(() => {})
+                setHistorialMensual(procesarHistorialMensual(ventasDashboard, val))
               }}
               className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
@@ -763,6 +865,15 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
     </div>
+    <ModalProductosAlerta
+      isOpen={modalAbierto}
+      onClose={() => setModalAbierto(false)}
+      productos={tipoModal === 'sin' ? alertas.productosSinStock : alertas.productosBajoStock}
+      titulo={tipoModal === 'sin' ? 'Productos Sin Stock' : 'Productos Con Stock Bajo'}
+      tipo={tipoModal}
+    />
+    </>
   )
 }
