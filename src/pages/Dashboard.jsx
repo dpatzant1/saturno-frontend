@@ -14,6 +14,7 @@ import {
   getProductos,
   getClientes,
   getVentas,
+  getHistorialMensualVentas,
   getCreditos,
   getMovimientos,
   getVentasDelDia
@@ -52,7 +53,6 @@ export default function Dashboard() {
     productosMasVendidos: [],
     tiposVenta: []
   })
-  const [ventasDashboard, setVentasDashboard] = useState([])
   const [historialMensual, setHistorialMensual] = useState([])
   const [mesesHistorial, setMesesHistorial] = useState(12)
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -86,7 +86,6 @@ export default function Dashboard() {
 
       const ventasRes = await getVentas({ limit: 10000 })
       const ventas = ventasRes.datos || ventasRes || []
-      setVentasDashboard(ventas)
       console.log('✅ Ventas cargadas:', ventas.length)
 
       await new Promise(resolve => setTimeout(resolve, 100))
@@ -152,10 +151,11 @@ export default function Dashboard() {
       const ventasDelDia = await getVentasDelDia()
       console.log('📊 Ventas del día cargadas:', ventasDelDia)
 
-      // Construir historial mensual desde las mismas ventas del dashboard
-      const historialLocal = procesarHistorialMensual(ventas, mesesHistorial)
-      setHistorialMensual(historialLocal)
-      console.log('📅 Historial mensual calculado localmente:', historialLocal.length, 'meses')
+      // El historial se calcula en el backend, que pagina todas las ventas del
+      // rango para no perder registros por el límite de 1,000 de Supabase.
+      const historial = await getHistorialMensualVentas(mesesHistorial)
+      setHistorialMensual(historial)
+      console.log('📅 Historial mensual cargado:', historial.length, 'meses')
 
       // Actualizar estados
       setStats({
@@ -280,69 +280,13 @@ export default function Dashboard() {
     }
   }
 
-  const procesarHistorialMensual = (ventas, meses = 12) => {
+  const cambiarMesesHistorial = async (meses) => {
     try {
-      const hoy = new Date()
-      const nombresMeses = [
-        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
-        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
-      ]
-
-      const historial = {}
-      for (let i = 0; i < meses; i++) {
-        const fecha = new Date(hoy.getFullYear(), hoy.getMonth() - (meses - 1) + i, 1)
-        const anio = fecha.getFullYear()
-        const mes = fecha.getMonth() + 1
-        const key = `${anio}-${String(mes).padStart(2, '0')}`
-
-        historial[key] = {
-          key,
-          anio,
-          mes,
-          nombre_mes: nombresMeses[mes - 1],
-          etiqueta: `${nombresMeses[mes - 1].substring(0, 3)} ${anio}`,
-          total: 0,
-          cantidad: 0,
-          contado: 0,
-          credito: 0,
-          monto_contado: 0,
-          monto_credito: 0
-        }
-      }
-
-      ventas
-        .filter(v => v.estado === 'ACTIVA')
-        .forEach(venta => {
-          const fechaFuente = venta.fecha_venta || venta.created_at
-          if (!fechaFuente) return
-
-          const fechaVenta = String(fechaFuente).split('T')[0]
-          const key = fechaVenta.slice(0, 7)
-          const monto = Number(venta.total) || 0
-
-          if (!historial[key]) return
-
-          historial[key].total += monto
-          historial[key].cantidad += 1
-
-          if (venta.tipo_venta === 'CONTADO') {
-            historial[key].contado += 1
-            historial[key].monto_contado += monto
-          } else if (venta.tipo_venta === 'CREDITO') {
-            historial[key].credito += 1
-            historial[key].monto_credito += monto
-          }
-        })
-
-      return Object.values(historial).map(m => ({
-        ...m,
-        total: Number(m.total.toFixed(2)),
-        monto_contado: Number(m.monto_contado.toFixed(2)),
-        monto_credito: Number(m.monto_credito.toFixed(2))
-      }))
+      const historial = await getHistorialMensualVentas(meses)
+      setMesesHistorial(meses)
+      setHistorialMensual(historial)
     } catch (error) {
-      console.error('Error procesando historial mensual:', error)
-      return []
+      console.error('Error cargando historial mensual:', error)
     }
   }
 
@@ -683,11 +627,7 @@ export default function Dashboard() {
             <label className="text-sm text-gray-500">Mostrar:</label>
             <select
               value={mesesHistorial}
-              onChange={(e) => {
-                const val = Number(e.target.value)
-                setMesesHistorial(val)
-                setHistorialMensual(procesarHistorialMensual(ventasDashboard, val))
-              }}
+              onChange={(e) => cambiarMesesHistorial(Number(e.target.value))}
               className="text-sm border border-gray-300 rounded-md px-2 py-1 focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
               <option value={6}>Últimos 6 meses</option>
