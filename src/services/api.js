@@ -475,6 +475,15 @@ export const getClientes = async (params = {}) => {
   }
 }
 
+export const getClientesPorTipo = async (tipo) => {
+  try {
+    const response = await api.get(`/clientes/tipo/${tipo}`)
+    return extraerDatos(response)
+  } catch (error) {
+    throw new Error(error.response?.data?.mensaje || error.response?.data?.message || 'Error al obtener clientes por tipo')
+  }
+}
+
 export const createCliente = async (clienteData) => {
   try {
     const response = await api.post('/clientes', clienteData)
@@ -556,9 +565,9 @@ export const getVentas = async (params = {}) => {
   }
 }
 
-export const getVentaDetalle = async (id) => {
+export const getVentaDetalle = async (id, { signal } = {}) => {
   try {
-    const response = await api.get(`/ventas/${id}`)
+    const response = await api.get(`/ventas/${encodeURIComponent(id)}`, { signal })
     return extraerDatos(response)
   } catch (error) {
     throw new Error(error.response?.data?.mensaje || error.response?.data?.message || 'Error al obtener detalle de venta')
@@ -633,9 +642,9 @@ export const getHistorialMensualVentas = async (meses = 12) => {
 }
 
 // ============== CREDITOS ==============
-export const getCreditos = async (params = {}) => {
+export const getCreditos = async (params = {}, { signal } = {}) => {
   try {
-    const response = await api.get('/creditos', { params })
+    const response = await api.get('/creditos', { params, signal })
     return extraerDatos(response)
   } catch (error) {
     throw new Error(error.response?.data?.mensaje || error.response?.data?.message || 'Error al obtener créditos')

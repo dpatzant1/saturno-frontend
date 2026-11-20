@@ -1,25 +1,46 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { Search, DollarSign, Eye, CreditCard, FileText, X, Download } from 'lucide-react'
-import { getCreditos, getCredito, getClientes, createPago, getHistorialPagos } from '../services/api'
+import { getCreditos, getCredito, getClientesPorTipo, createPago, getHistorialPagos } from '../services/api'
 import Pagination from '../components/Pagination'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
+
+const filtrosIniciales = {
+  estado: '',
+  id_cliente: '',
+  fecha_desde: '',
+  fecha_hasta: '',
+  searchTerm: ''
+}
+
+const paginacionInicial = {
+  total: 0,
+  totalPages: 0,
+  hasNextPage: false,
+  hasPrevPage: false
+}
+
+const formatoFechaCredito = new Intl.DateTimeFormat('es-GT', {
+  timeZone: 'America/Guatemala',
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric'
+})
 
 export default function Creditos() {
   // Estados principales
   const [creditos, setCreditos] = useState([])
   const [clientes, setClientes] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [errorCreditos, setErrorCreditos] = useState('')
+  const [errorClientes, setErrorClientes] = useState('')
+  const [revisionCreditos, setRevisionCreditos] = useState(0)
   
   // Estados de paginación
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-  const [pagination, setPagination] = useState({
-    total: 0,
-    totalPages: 0,
-    hasNextPage: false,
-    hasPrevPage: false
-  })
+  const [pagination, setPagination] = useState(paginacionInicial)
   
   // Estados para modales
   const [showPagoModal, setShowPagoModal] = useState(false)
@@ -33,13 +54,7 @@ export default function Creditos() {
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' })
   
   // Estados para filtros
-  const [filtros, setFiltros] = useState({
-    estado: '', // '', 'ACTIVO', 'VENCIDO', 'PAGADO'
-    id_cliente: '',
-    fecha_desde: '',
-    fecha_hasta: '',
-    searchTerm: ''
-  })
+  const [filtros, setFiltros] = useState(filtrosIniciales)
 
   // Estado para formulario de pago
   const [formPago, setFormPago] = useState({
@@ -58,61 +73,61 @@ export default function Creditos() {
     }, 4000)
   }
 
-  // Hook para cargar créditos al montar el componente
   useEffect(() => {
-    cargarCreditos()
-  }, [currentPage, pageSize, filtros])
+    const controller = new AbortController()
+    const { signal } = controller
 
-  // Hook inicial para cargar clientes
-  useEffect(() => {
-    cargarClientes()
-  }, [])
-
-  // Función para cargar lista de clientes
-  const cargarClientes = async () => {
-    try {
-      const response = await getClientes()
-      // Si tiene paginación, extraer datos
-      const todosClientes = response.datos || response || []
-      // Filtrar solo clientes tipo CREDITO
-      const clientesCredito = todosClientes.filter(cliente => cliente.tipo_cliente === 'CREDITO')
-      setClientes(clientesCredito)
-    } catch (error) {
-      console.error('Error al cargar clientes:', error)
-      setClientes([])
-    }
-  }
-
-  // Función para cargar créditos con filtros y paginación
-  const cargarCreditos = async () => {
-    try {
+    const cargarCreditos = async () => {
       setLoading(true)
-      
-      // Preparar parámetros de filtro
-      const params = {
-        page: currentPage,
-        limit: pageSize
-      }
-      if (filtros.estado) params.estado = filtros.estado
-      if (filtros.id_cliente) params.id_cliente = filtros.id_cliente
-      if (filtros.fecha_desde) params.fecha_desde = filtros.fecha_desde
-      if (filtros.fecha_hasta) params.fecha_hasta = filtros.fecha_hasta
+      setErrorCreditos('')
 
-      const response = await getCreditos(params)
-      setCreditos(response.datos || response || [])
-      setPagination(response.paginacion || {
-        total: 0,
-        totalPages: 0,
-        hasNextPage: false,
-        hasPrevPage: false
-      })
-    } catch (error) {
-      console.error('Error al cargar créditos:', error)
-      setCreditos([])
-    } finally {
-      setLoading(false)
+      try {
+        const params = {
+          page: currentPage,
+          limit: pageSize
+        }
+        if (filtros.estado) params.estado = filtros.estado
+        if (filtros.id_cliente) params.id_cliente = filtros.id_cliente
+        if (filtros.fecha_desde) params.fecha_desde = filtros.fecha_desde
+        if (filtros.fecha_hasta) params.fecha_hasta = filtros.fecha_hasta
+        if (filtros.searchTerm.trim()) params.busqueda = filtros.searchTerm.trim()
+
+        const response = await getCreditos(params, { signal })
+        if (signal.aborted) return
+
+        setCreditos(response.datos || response || [])
+        setPagination(response.paginacion || paginacionInicial)
+      } catch (error) {
+        if (signal.aborted) return
+
+        console.error('Error al cargar créditos:', error)
+        setCreditos([])
+        setPagination(paginacionInicial)
+        setErrorCreditos('No se pudieron cargar los créditos.')
+      } finally {
+        if (!signal.aborted) setLoading(false)
+      }
     }
-  }
+
+    cargarCreditos()
+    return () => controller.abort()
+  }, [currentPage, pageSize, filtros, revisionCreditos])
+
+  useEffect(() => {
+    let activo = true
+
+    getClientesPorTipo('CREDITO')
+      .then(clientesCredito => {
+        if (activo) setClientes(clientesCredito)
+      })
+      .catch(error => {
+        if (!activo) return
+        console.error('Error al cargar clientes:', error)
+        setErrorClientes('No se pudo cargar la lista de clientes.')
+      })
+
+    return () => { activo = false }
+  }, [])
 
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage)
@@ -126,11 +141,12 @@ export default function Creditos() {
   // Función para formatear fecha
   const formatearFecha = (fecha) => {
     if (!fecha) return 'N/A'
+    if (/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      const [año, mes, dia] = fecha.split('-')
+      return `${dia}/${mes}/${año}`
+    }
     const date = new Date(fecha)
-    const dia = String(date.getDate()).padStart(2, '0')
-    const mes = String(date.getMonth() + 1).padStart(2, '0')
-    const año = date.getFullYear()
-    return `${dia}/${mes}/${año}`
+    return Number.isNaN(date.getTime()) ? 'N/A' : formatoFechaCredito.format(date)
   }
 
   // Función para formatear fecha y hora
@@ -380,7 +396,7 @@ export default function Creditos() {
       })
       
       // Recargar lista de créditos
-      cargarCreditos()
+      setRevisionCreditos(revision => revision + 1)
       
     } catch (error) {
       console.error('Error al registrar pago:', error)
@@ -390,30 +406,15 @@ export default function Creditos() {
     }
   }
 
-  // Función para limpiar todos los filtros
-  const limpiarFiltros = () => {
-    setFiltros({
-      estado: '',
-      id_cliente: '',
-      fecha_desde: '',
-      fecha_hasta: '',
-      searchTerm: ''
-    })
+  const cambiarFiltro = (campo, valor) => {
+    setCurrentPage(1)
+    setFiltros(actual => ({ ...actual, [campo]: valor }))
   }
 
-  // Aplicar filtros cuando cambien (excepto searchTerm que es en tiempo real)
-  useEffect(() => {
-    cargarCreditos()
-  }, [filtros.estado, filtros.id_cliente, filtros.fecha_desde, filtros.fecha_hasta])
-
-  // Filtrar créditos localmente por searchTerm para búsqueda en tiempo real
-  const creditosFiltrados = creditos.filter(credito => {
-    if (!filtros.searchTerm) return true
-    const nombreCompleto = `${credito.clientes?.nombre || ''} ${credito.clientes?.apellido || ''}`.toLowerCase()
-    const telefono = credito.clientes?.telefono || ''
-    const searchLower = filtros.searchTerm.toLowerCase()
-    return nombreCompleto.includes(searchLower) || telefono.includes(searchLower)
-  })
+  const limpiarFiltros = () => {
+    setCurrentPage(1)
+    setFiltros(filtrosIniciales)
+  }
 
   return (
     <>
@@ -430,10 +431,12 @@ export default function Creditos() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
               type="text"
-              placeholder="Buscar créditos por cliente..."
+              aria-label="Buscar créditos por cliente"
+              placeholder="Buscar por nombre, apellido, teléfono o correo..."
+              maxLength={201}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
               value={filtros.searchTerm}
-              onChange={(e) => setFiltros({ ...filtros, searchTerm: e.target.value })}
+              onChange={(e) => cambiarFiltro('searchTerm', e.target.value)}
             />
           </div>
 
@@ -441,13 +444,14 @@ export default function Creditos() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             {/* Filtro por Estado */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="credito-estado" className="block text-sm font-medium text-gray-700 mb-1">
                 Estado
               </label>
               <select
+                id="credito-estado"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
                 value={filtros.estado}
-                onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
+                onChange={(e) => cambiarFiltro('estado', e.target.value)}
               >
                 <option value="">Todos</option>
                 <option value="ACTIVO">ACTIVO</option>
@@ -459,13 +463,14 @@ export default function Creditos() {
 
             {/* Filtro por Cliente */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="credito-cliente" className="block text-sm font-medium text-gray-700 mb-1">
                 Cliente
               </label>
               <select
+                id="credito-cliente"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
                 value={filtros.id_cliente}
-                onChange={(e) => setFiltros({ ...filtros, id_cliente: e.target.value })}
+                onChange={(e) => cambiarFiltro('id_cliente', e.target.value)}
               >
                 <option value="">Todos los clientes</option>
                 {clientes.map(cliente => (
@@ -474,31 +479,34 @@ export default function Creditos() {
                   </option>
                 ))}
               </select>
+              {errorClientes && <p role="status" className="mt-1 text-sm text-red-700">{errorClientes}</p>}
             </div>
 
             {/* Filtro Fecha Desde */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="credito-fecha-desde" className="block text-sm font-medium text-gray-700 mb-1">
                 Desde
               </label>
               <input
+                id="credito-fecha-desde"
                 type="date"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
                 value={filtros.fecha_desde}
-                onChange={(e) => setFiltros({ ...filtros, fecha_desde: e.target.value })}
+                onChange={(e) => cambiarFiltro('fecha_desde', e.target.value)}
               />
             </div>
 
             {/* Filtro Fecha Hasta */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="credito-fecha-hasta" className="block text-sm font-medium text-gray-700 mb-1">
                 Hasta
               </label>
               <input
+                id="credito-fecha-hasta"
                 type="date"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-carpinteria-medio"
                 value={filtros.fecha_hasta}
-                onChange={(e) => setFiltros({ ...filtros, fecha_hasta: e.target.value })}
+                onChange={(e) => cambiarFiltro('fecha_hasta', e.target.value)}
               />
             </div>
           </div>
@@ -543,14 +551,14 @@ export default function Creditos() {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {creditosFiltrados.length === 0 ? (
+              {errorCreditos || creditos.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
-                    {filtros.searchTerm ? 'No se encontraron créditos que coincidan con la búsqueda' : 'No hay créditos registrados'}
+                    {errorCreditos || (filtros.searchTerm.trim() ? 'No se encontraron créditos que coincidan con la búsqueda' : 'No hay créditos registrados')}
                   </td>
                 </tr>
               ) : (
-                creditosFiltrados.map((credito) => {
+                creditos.map((credito) => {
                   const nombreCompleto = `${credito.clientes?.nombre || ''} ${credito.clientes?.apellido || ''}`.trim()
                   const montoPagado = credito.monto_total - credito.saldo_pendiente
                   const esVencido = credito.estado === 'VENCIDO'
@@ -1010,7 +1018,7 @@ export default function Creditos() {
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Fecha de Inicio</p>
                   <p className="font-medium text-gray-900">
-                    {formatearFecha(creditoSeleccionado.fecha_credito)}
+                    {formatearFecha(creditoSeleccionado.fecha_inicio)}
                   </p>
                 </div>
 
@@ -1026,12 +1034,12 @@ export default function Creditos() {
               {creditoSeleccionado.id_venta && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <p className="text-sm text-gray-600 mb-1">Venta Asociada</p>
-                  <a 
-                    href={`#/ventas?id=${creditoSeleccionado.id_venta}`}
+                  <Link
+                    to={{ pathname: '/ventas', search: new URLSearchParams({ id: creditoSeleccionado.id_venta }).toString() }}
                     className="text-blue-600 hover:text-blue-800 font-medium hover:underline"
                   >
                     Ver Venta #{creditoSeleccionado.id_venta.slice(0, 8)}
-                  </a>
+                  </Link>
                 </div>
               )}
 
